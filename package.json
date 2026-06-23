@@ -1,0 +1,51 @@
+{
+  "name": "gestion-pharmacie-back",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KUROYUKIHIME333/GESTION-PHARMACIE-BACK.git"
+  },
+  "keywords": [
+    "pharmacie",
+    "hospitaliere",
+    "RDC",
+    "gestion-stock"
+  ],
+  "author": "RAMAZANI SUMAILI Daniel Herman",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/KUROYUKIHIME333/GESTION-PHARMACIE-BACK/issues"
+  },
+  "homepage": "https://github.com/KUROYUKIHIME333/GESTION-PHARMACIE-BACK#readme",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@prisma/client": "^7.8.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.8.5",
+    "jsonwebtoken": "^9.0.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.0.0",
+    "prisma": "^7.8.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
