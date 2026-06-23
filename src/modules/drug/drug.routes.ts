@@ -1,10 +1,4 @@
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
-import { ZodError } from "zod";
-import {
-  drugCreateSchema,
-  drugUpdateSchema,
-  drugQuerySchema,
-} from "./drug.schemas.js";
 import { drugController } from "./drug.controller.js";
 import { requireAuth } from "../../plugins/auth.plugins.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
