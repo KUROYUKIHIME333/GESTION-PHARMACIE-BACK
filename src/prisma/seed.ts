@@ -33,10 +33,10 @@ async function main() {
   });
 
   const admin = await prisma.user.upsert({
-    where: { email: "admin@pharmacie.cd" },
+    where: { email: "firstAdmin@pharmacie.cd" },
     update: {},
     create: {
-      employeeId: "ADM-001",
+      employeeId: "ADM-000",
       firstName: "Administrateur",
       lastName: "Système",
       email: "admin@pharmacie.cd",
