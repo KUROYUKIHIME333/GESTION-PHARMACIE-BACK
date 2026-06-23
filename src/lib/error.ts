@@ -1,57 +1,46 @@
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
+  public readonly details?: Record<string, unknown>;
 
-  constructor(
+  private constructor(
     message: string,
-    statusCode: number = 500,
-    code: string = "INTERNAL_ERROR"
+    statusCode: number,
+    code: string,
+    details?: Record<string, unknown>
   ) {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
-    this.name = "AppError";
+    this.details = details;
+    this.name = this.constructor.name;
     Error.captureStackTrace(this, this.constructor);
   }
-}
 
-export class NotFoundError extends AppError {
-  constructor(resource: string, identifier?: string) {
+  // Méthodes statiques (Factories)
+  static notFound(resource: string, identifier?: string): AppError {
     const msg = identifier
       ? `${resource} non trouvé(e) : ${identifier}`
       : `${resource} non trouvé(e)`;
-    super(msg, 404, "NOT_FOUND");
-    this.name = "NotFoundError";
-  }
-}
-
-export class ValidationError extends AppError {
-  constructor(message: string, details?: Record<string, unknown>) {
-    super(message, 400, "VALIDATION_ERROR");
-    this.name = "ValidationError";
-    this.details = details;
+    return new AppError(msg, 404, "NOT_FOUND");
   }
 
-  public details?: Record<string, unknown>;
-}
-
-export class UnauthorizedError extends AppError {
-  constructor(message: string = "Non authentifié") {
-    super(message, 401, "UNAUTHORIZED");
-    this.name = "UnauthorizedError";
+  static validation(
+    message: string,
+    details?: Record<string, unknown>
+  ): AppError {
+    return new AppError(message, 400, "VALIDATION_ERROR", details);
   }
-}
 
-export class ForbiddenError extends AppError {
-  constructor(message: string = "Accès interdit") {
-    super(message, 403, "FORBIDDEN");
-    this.name = "ForbiddenError";
+  static unauthorized(message: string = "Non authentifié"): AppError {
+    return new AppError(message, 401, "UNAUTHORIZED");
   }
-}
 
-export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(message, 409, "CONFLICT");
-    this.name = "ConflictError";
+  static forbidden(message: string = "Accès interdit"): AppError {
+    return new AppError(message, 403, "FORBIDDEN");
+  }
+
+  static conflict(message: string): AppError {
+    return new AppError(message, 409, "CONFLICT");
   }
 }
