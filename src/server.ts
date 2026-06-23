@@ -133,11 +133,10 @@ const start = async () => {
     app.log.info("|====================================================|");
     app.log.info("|====================================================|");
     await app.listen({ port, host: "0.0.0.0" });
-    app.log.info(`🚀 Serveur : http://0.0.0.0:${port}`);
+    app.log.info(`Serveur : http://0.0.0.0:${port}`);
     app.log.info(`📖 Docs : http://0.0.0.0:${port}/docs`);
     app.log.info("|====================================================|");
     app.log.info("|====================================================|");
-
     console.log("📋 Routes enregistrées:");
     console.log(app.printRoutes());
   } catch (err) {
