@@ -5,15 +5,8 @@ import {
   drugUpdateSchema,
   drugQuerySchema,
 } from "./drug.schemas.js";
-import {
-  listDrugs,
-  getDrugById,
-  createDrug,
-  updateDrug,
-  deleteDrug,
-} from "./drug.services.js";
+import { drugController } from "./drug.controller.js";
 import { requireAuth } from "../../plugins/auth.plugins.js";
-import { AppError } from "../../lib/error.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
 
 export async function drugRoutes(
@@ -23,20 +16,7 @@ export async function drugRoutes(
   // GET /api/drugs - Liste des médicaments
   fastify.get("/", {
     preHandler: [requireAuth],
-    handler: async (request, reply) => {
-      try {
-        const query = drugQuerySchema.parse(request.query);
-        const result = await listDrugs(query);
-        return reply.status(200).send({ success: true, data: result });
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw AppError.validation("Paramètres invalides", {
-            issues: error.issues,
-          });
-        }
-        throw error;
-      }
-    },
+    handler: drugController.list,
   });
 
   // POST /api/drugs - Créer un médicament
@@ -49,30 +29,13 @@ export async function drugRoutes(
         UserRole.STOCK_MANAGER
       ),
     ],
-    handler: async (request, reply) => {
-      try {
-        const data = drugCreateSchema.parse(request.body);
-        const drug = await createDrug(data, request.user.id);
-        return reply.status(201).send({ success: true, data: drug });
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw AppError.validation("Données invalides", {
-            issues: error.issues,
-          });
-        }
-        throw error;
-      }
-    },
+    handler: drugController.create,
   });
 
   // GET /api/drugs/:id - Détail d'un médicament
   fastify.get("/:id", {
     preHandler: [requireAuth],
-    handler: async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const drug = await getDrugById(id);
-      return reply.status(200).send({ success: true, data: drug });
-    },
+    handler: drugController.getOne,
   });
 
   // PUT /api/drugs/:id - Modifier un médicament
@@ -85,33 +48,12 @@ export async function drugRoutes(
         UserRole.STOCK_MANAGER
       ),
     ],
-    handler: async (request, reply) => {
-      try {
-        const { id } = request.params as { id: string };
-        const data = drugUpdateSchema.parse(request.body);
-        const drug = await updateDrug(id, data);
-        return reply.status(200).send({ success: true, data: drug });
-      } catch (error) {
-        if (error instanceof ZodError) {
-          throw AppError.validation("Données invalides", {
-            issues: error.issues,
-          });
-        }
-        throw error;
-      }
-    },
+    handler: drugController.update,
   });
 
   // DELETE /api/drugs/:id - Supprimer un médicament
   fastify.delete("/:id", {
     preHandler: [requireAuth, fastify.requireRole(UserRole.SUPERADMIN)],
-    handler: async (request, reply) => {
-      const { id } = request.params as { id: string };
-      await deleteDrug(id);
-      return reply.status(200).send({
-        success: true,
-        message: "Médicament supprimé avec succès",
-      });
-    },
+    handler: drugController.delete,
   });
 }
