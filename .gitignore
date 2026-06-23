@@ -1,0 +1,31 @@
+# Dépendances
+node_modules/
+
+# Sortie de compilation (TypeScript)
+dist/
+build/
+
+# Variables d'environnement (très important pour ne pas exposer vos clés secrètes)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Prisma
+# Le dossier généré contient les binaires du moteur Prisma
+prisma/client/
+# Si vous stockez une base de données locale (comme SQLite)
+*.db
+*.db-journal
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Éditeurs et systèmes
+.vscode/
+.idea/
+.DS_Store
+*.log
