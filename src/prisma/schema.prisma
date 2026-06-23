@@ -1,0 +1,1434 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+datasource db {
+  provider = "postgresql"
+}
+generator client {
+  provider = "prisma-client"
+  output   = "generated/prisma"
+}
+
+// =============================================================================
+// SCHÉMA PRISMA — Pharmacie Hospitalière
+// Version : production-ready v2.0
+// Base : PostgreSQL 15+
+// =============================================================================
+//
+// CORRECTIONS & AMÉLIORATIONS PAR RAPPORT À LA V1 :
+//   1. DrugSubstitutes : relation many-to-many auto-référentielle corrigée
+//      (la v1 déclarait deux relations "DrugSubstitutes" sur la même table,
+//       ce qui est invalide en Prisma — une table de jonction explicite est requise)
+//   2. Ajout de InternalUsageLine → Batch (relation manquante)
+//   3. Ajout de InternalUsageLine → Drug (relation manquante)
+//   4. InventoryLine → Batch et Drug : relations déclarées explicitement
+//      (la v1 stockait des String orphelins sans FK Prisma)
+//   5. Ajout enum PaymentStatus (le champ paymentStatus sur PurchaseOrder
+//      était un String libre non typé)
+//   6. Ajout enum AllergySeverity (le champ severity sur PatientAllergy
+//      était un String libre non typé)
+//   7. Ajout enum SupplierType (le champ type sur Supplier était un String libre)
+//   8. Ajout enum InsuranceType (le champ type sur Insurance était un String libre)
+//   9. prescriptionNumber et dispensationNumber : remplacés par des séquences
+//      lisibles via @default(dbgenerated()) au lieu de cuid() (illisible en prod)
+//  10. Ajout modèle TransferOrder pour tracer les transferts inter-services
+//      (la v1 référençait transferId sur StockMovement sans modèle cible)
+//  11. Ajout modèle ControlledDrugRegister : registre stupéfiants obligatoire
+//      (exigence réglementaire universelle, absente de la v1)
+//  12. Ajout modèle DrugInteraction : base d'interactions médicamenteuses
+//      (la v1 avait un flag interactionCheckDone sans données de référence)
+//  13. Ajout index composites critiques pour performance en production
+//  14. Ajout @@map() sur tous les modèles pour noms de tables SQL explicites
+//  15. Ajout modèle Session pour gestion tokens côté serveur
+//      (la v1 n'avait qu'un refreshTokenHash sur User, insuffisant)
+//  16. StockAlert liée optionnellement à un Batch (pour alertes péremption précises)
+//  17. Ajout champ drugId explicite sur DispensationLine avec relation Drug
+//      (était dénormalisé sans relation Prisma — requêtes impossibles sans JOIN manuel)
+// =============================================================================
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+/// Rôles utilisateurs. Chaque rôle doit correspondre à une politique d'accès
+/// définie dans la couche applicative (RBAC). Ne jamais autoriser les droits
+/// uniquement sur la base de ce champ sans vérification en middleware.
+enum UserRole {
+  SUPERADMIN // Accès total, configuration système — 1 ou 2 comptes max
+  PHARMACIST // Pharmacien diplômé responsable : valide dispensations, commandes
+  PHARMACY_TECH // Technicien / aide-pharmacien : prépare, saisit sous supervision
+  DOCTOR // Médecin : créé des ordonnances, lecture stock limitée
+  NURSE // Infirmier : consultation stock, dispensation d'urgence bornée
+  CASHIER // Caissier : facturation, encaissement, reçus
+  STOCK_MANAGER // Gestionnaire stock : réceptions, inventaires, commandes
+  AUDITOR // Auditeur : lecture seule totale, export rapports
+}
+
+/// Sexe biologique / genre déclaré du patient.
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+/// Forme galénique du médicament.
+enum DrugForm {
+  TABLET // Comprimé (simple, enrobé, effervescent…)
+  CAPSULE // Gélule
+  SYRUP // Sirop
+  INJECTABLE_IV // Injectable intraveineux
+  INJECTABLE_IM // Injectable intramusculaire
+  INJECTABLE_SC // Injectable sous-cutané
+  CREAM // Crème dermique
+  OINTMENT // Pommade
+  DROPS_EYE // Gouttes ophtalmiques
+  DROPS_EAR // Gouttes auriculaires
+  DROPS_NASAL // Gouttes nasales
+  SUPPOSITORY // Suppositoire rectal
+  PATCH // Timbre transdermique
+  POWDER // Poudre pour suspension / solution
+  GRANULES // Granulés
+  SOLUTION // Solution buvable
+  SUSPENSION // Suspension buvable
+  AEROSOL // Aérosol / spray inhalé
+  GEL // Gel (cutané ou muqueux)
+  PESSARY // Ovule gynécologique
+  OTHER
+}
+
+/// Catégorie thérapeutique principale. Utilisée pour les rapports de
+/// consommation et les programmes verticaux (ARV, paludisme, tuberculose…).
+enum DrugCategory {
+  // Programmes verticaux prioritaires
+  ANTIRETROVIRAL // ARV — programme VIH/SIDA
+  ANTIMALARIAL // Antipaludéens (ACT, chloroquine…)
+  ANTITUBERCULOSIS // Antituberculeux (DOTS)
+  VACCINE // Vaccins (gestion chaîne du froid critique)
+
+  // Catégories générales
+  ANTIBIOTIC
+  ANALGESIC
+  ANTIPYRETIC
+  ANTI_INFLAMMATORY
+  ANTIFUNGAL
+  ANTIPARASITIC
+  CARDIOVASCULAR
+  ANTIHYPERTENSIVE
+  ANTIDIABETIC
+  RESPIRATORY
+  GASTROINTESTINAL
+  NEUROLOGICAL
+  PSYCHIATRIC
+  HORMONAL
+  CONTRACEPTIVE
+  VITAMINS_SUPPLEMENTS
+  ANESTHETIC
+  ANTISEPTIC_DISINFECTANT
+  MEDICAL_CONSUMABLE // Consommables médicaux (seringues, compresses…)
+  DIAGNOSTIC_REAGENT // Réactifs de diagnostic
+  OTHER
+}
+
+/// Conditions de stockage requises. Un lot peut en avoir plusieurs
+/// (ex: REFRIGERATED + PROTECT_LIGHT). Stocké en tableau sur Drug.
+enum StorageCondition {
+  ROOM_TEMP // 15–25 °C — conditions ambiantes standard
+  COOL // 8–15 °C — zone fraîche
+  REFRIGERATED // 2–8 °C — chaîne du froid (vaccins, insuline…)
+  FROZEN // < 0 °C — congélateur
+  PROTECT_LIGHT // À l'abri de la lumière (emballage opaque)
+  PROTECT_HUMIDITY // À l'abri de l'humidité (dessicant requis)
+  CONTROLLED_SUBSTANCE // Stupéfiant / psychotrope — armoire sécurisée + registre
+}
+
+/// Types de mouvements de stock. Toute variation de currentQuantity sur Batch
+/// DOIT passer par un StockMovement. Ne jamais modifier Batch.currentQuantity
+/// directement en base sans créer le mouvement correspondant.
+enum MovementType {
+  RECEPTION // Entrée stock — livraison fournisseur (lié à PurchaseOrder)
+  DONATION_IN // Don entrant (ONG, programme, autre structure)
+  TRANSFER_IN // Transfert entrant depuis un autre service ou site
+  DISPENSATION_OUT // Sortie dispensation patient (lié à DispensationLine)
+  INTERNAL_USE // Sortie usage interne (soins, bloc, urgences)
+  TRANSFER_OUT // Transfert sortant vers un autre service ou site
+  DONATION_OUT // Don sortant (transfert à une autre structure)
+  EXPIRY_REMOVAL // Sortie destruction lot périmé
+  LOSS // Perte (vol, casse, détérioration constatée)
+  INVENTORY_POSITIVE // Ajustement inventaire — excédent constaté
+  INVENTORY_NEGATIVE // Ajustement inventaire — manquant constaté
+  RETURN_TO_SUPPLIER // Retour au fournisseur (défaut qualité, excédent)
+  RETURN_FROM_PATIENT // Retour patient — médicaments non utilisés (rare)
+}
+
+/// Statut du cycle de vie d'une ordonnance.
+enum PrescriptionStatus {
+  DRAFT // Brouillon (médecin en cours de saisie)
+  PENDING // Validée, en attente de dispensation
+  PARTIALLY_DISPENSED // Partiellement servie (rupture partielle ou fractionnement)
+  DISPENSED // Servie en totalité
+  CANCELLED // Annulée (erreur, contre-indication détectée…)
+  EXPIRED // Délai de validité dépassé sans dispensation complète
+}
+
+/// Statut du cycle de vie d'une commande fournisseur.
+enum OrderStatus {
+  DRAFT // En cours de rédaction
+  SUBMITTED // Envoyée au fournisseur
+  CONFIRMED // Confirmée par le fournisseur
+  PARTIALLY_RECEIVED // Réception partielle (livraisons échelonnées)
+  RECEIVED // Réception complète et vérifiée
+  CANCELLED // Annulée
+  DISPUTE // En litige (quantité, qualité, prix)
+}
+
+/// Statut de paiement d'une commande fournisseur.
+/// Remplace le champ String libre paymentStatus de la v1.
+enum PaymentStatus {
+  PENDING // Paiement non encore effectué
+  PARTIAL // Acompte versé
+  PAID // Paiement intégral effectué
+  OVERDUE // Délai de paiement dépassé
+  DISPUTED // Montant contesté
+}
+
+/// Modes de paiement acceptés à la pharmacie.
+enum PaymentMethod {
+  CASH_CDF // Espèces en francs congolais
+  CASH_USD // Espèces en dollars américains (très courant)
+  MOBILE_MONEY // M-Pesa, Airtel Money, Orange Money, etc.
+  INSURANCE // Prise en charge assurance (CNSS, mutuelle…)
+  ONG_COVERAGE // Prise en charge ONG ou programme vertical
+  CREDIT // Crédit hôpital (indigents, accords institutionnels)
+  FREE // Gratuit (programme, urgence vitale, don)
+}
+
+/// Types d'alertes générées automatiquement par le système.
+enum AlertType {
+  LOW_STOCK // Stock global d'un médicament sous le seuil d'alerte
+  CRITICAL_STOCK // Stock sous le seuil critique (urgence réapprovisionnement)
+  EXPIRY_SOON // Lot expirant dans les X jours (configurable)
+  EXPIRED // Lot périmé encore présent en stock actif
+  COLD_CHAIN_BREACH // Rupture chaîne du froid détectée sur un lot
+  CONTROLLED_REORDER // Stupéfiant dont le stock nécessite une commande
+  INVENTORY_DISCREPANCY // Écart significatif constaté lors d'un inventaire
+  LICENSE_EXPIRY // Licence fournisseur proche de l'expiration
+}
+
+/// Cycle de vie d'une alerte.
+enum AlertStatus {
+  ACTIVE // Alerte active, non traitée
+  ACKNOWLEDGED // Prise en compte par un utilisateur (en cours de traitement)
+  RESOLVED // Problème résolu
+  IGNORED // Ignorée délibérément (avec commentaire obligatoire)
+}
+
+/// Sévérité d'une allergie médicamenteuse.
+/// Remplace le champ String libre severity de la v1.
+enum AllergySeverity {
+  MILD // Légère (éruption cutanée mineure, prurit)
+  MODERATE // Modérée (urticaire, œdème localisé)
+  SEVERE // Sévère (bronchospasme, œdème de Quincke)
+  ANAPHYLAXIS // Anaphylaxie — contre-indication absolue
+}
+
+/// Types de fournisseurs.
+/// Remplace le champ String libre type de la v1.
+enum SupplierType {
+  WHOLESALER // Grossiste répartiteur
+  MANUFACTURER // Fabricant pharmaceutique
+  NGO // Organisation non gouvernementale (dons, programmes)
+  STATE_PROGRAM // Programme d'État (ARV, PNLP, PNT, PEV…)
+  IMPORTER // Importateur agréé
+  LOCAL_PHARMACY // Dépannage inter-officines (exceptionnel)
+}
+
+/// Types d'organismes d'assurance / prise en charge.
+/// Remplace le champ String libre type de la v1.
+enum InsuranceType {
+  STATE // Organisme d'État (ex: CNSS)
+  MUTUAL // Mutuelle de santé
+  PRIVATE // Assurance privée commerciale
+  NGO // Couverture ONG ou programme humanitaire
+  SELF_PAY // Patient sans couverture (auto-paiement, référence seulement)
+}
+
+/// Statut d'un transfert inter-services.
+enum TransferStatus {
+  REQUESTED // Demande initiée par le service demandeur
+  APPROVED // Approuvée par la pharmacie
+  IN_TRANSIT // Médicaments remis au coursier / en transit
+  RECEIVED // Réception confirmée par le service destinataire
+  CANCELLED // Annulée
+  REJECTED // Refusée (rupture, motif invalide…)
+}
+
+// =============================================================================
+// UTILISATEURS & SESSIONS
+// =============================================================================
+
+/// Utilisateur du système (personnel hospitalier).
+/// Les données d'accès (mot de passe, tokens) ne doivent JAMAIS être exposées
+/// via l'API. Utiliser des DTOs qui excluent passwordHash et refreshTokenHash.
+model User {
+  id                 String   @id @default(cuid())
+  /// Matricule interne de l'hôpital — permet le lien avec les RH.
+  employeeId         String?  @unique
+  firstName          String
+  lastName           String
+  email              String   @unique
+  phone              String?
+  passwordHash       String // Bcrypt ou Argon2id — jamais MD5/SHA1
+  role               UserRole
+  isActive           Boolean  @default(true)
+  /// Force le changement de mot de passe à la prochaine connexion.
+  mustChangePassword Boolean  @default(true)
+
+  // -- Rattachement organisationnel ------------------------------------------
+  /// Service hospitalier d'appartenance (peut être null pour les rôles transversaux).
+  serviceId String?
+  service   HospitalService? @relation(fields: [serviceId], references: [id])
+
+  // -- Sécurité authentification ---------------------------------------------
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+  /// Compteur d'échecs consécutifs — réinitialisé à 0 après succès.
+  failedLoginCount Int       @default(0)
+  /// Date de déverrouillage automatique après trop d'échecs.
+  lockedUntil      DateTime?
+
+  // -- Relations métier ------------------------------------------------------
+  internalUsages        InternalUsage[]
+  sessions              Session[]
+  dispensations         Dispensation[]
+  prescriptions         Prescription[]
+  stockMovements        StockMovement[]
+  purchaseOrders        PurchaseOrder[]
+  inventories           PhysicalInventory[]
+  auditLogs             AuditLog[]
+  alertAcknowledgements AlertAcknowledgement[]
+  transfersRequested    TransferOrder[]        @relation("TransferRequester")
+  transfersApproved     TransferOrder[]        @relation("TransferApprover")
+  controlledEntries     ControlledDrugEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+/// Sessions actives (refresh tokens). Permet la révocation granulaire.
+/// Un utilisateur peut avoir plusieurs sessions (mobile + desktop).
+model Session {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  /// Hash du refresh token (SHA-256) — le token brut n'est jamais stocké.
+  tokenHash String    @unique
+  /// Device/navigateur pour l'UI de gestion des sessions.
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  /// Invalide la session sans la supprimer (pour audit).
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// =============================================================================
+// STRUCTURE HOSPITALIÈRE
+// =============================================================================
+
+/// Service ou unité hospitalière (chirurgie, pédiatrie, urgences, maternité…).
+/// Sert de point de rattachement pour les ordonnances et les usages internes.
+model HospitalService {
+  id          String  @id @default(cuid())
+  /// Code court utilisé sur les documents : CHIR, MED-INT, PEDIA, MATERN, URG…
+  code        String  @unique
+  name        String
+  description String?
+  /// Localisation physique (bâtiment, étage, aile).
+  floor       String?
+  isActive    Boolean @default(true)
+
+  users          User[]
+  prescriptions  Prescription[]
+  internalUsages InternalUsage[]
+  transfersFrom  TransferOrder[] @relation("TransferFrom")
+  transfersTo    TransferOrder[] @relation("TransferTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("hospital_services")
+}
+
+// =============================================================================
+// RÉFÉRENTIEL MÉDICAMENTS
+// =============================================================================
+
+/// Médicament (référentiel produit). Représente la fiche d'identité du produit,
+/// indépendamment des lots physiques en stock.
+/// ⚠️ isActive = false ne supprime PAS le médicament — les données historiques
+/// (mouvements, dispensations) doivent rester consultables.
+model Drug {
+  id          String  @id @default(cuid())
+  /// Code interne pharmacie — unique, utilisé sur les bons et étiquettes.
+  code        String  @unique
+  /// Nom commercial / de spécialité (ex: "Coartem").
+  name        String
+  /// Nom générique si différent du nom commercial (ex: "Artéméther/Luméfantrine").
+  genericName String?
+  /// Dénomination Commune Internationale OMS — obligatoire.
+  dci         String
+
+  // -- Classification --------------------------------------------------------
+  form             DrugForm
+  category         DrugCategory
+  /// Classe thérapeutique libre (ex: "Bêta-bloquant", "AINS sélectif Cox-2").
+  therapeuticClass String?
+
+  // -- Dosage & conditionnement ----------------------------------------------
+  /// Concentration ou dosage (ex: "500mg", "250mg/5ml", "40UI/ml").
+  dosage         String
+  /// Précision pour injectables et solutions (ex: "40mg/2ml").
+  concentration  String?
+  /// Unité de dispensation au patient : "comprimé", "ml", "flacon", "ampoule".
+  unitOfDispense String
+  /// Nombre d'unités de dispensation par conditionnement (boîte, flacon…).
+  packSize       Int     @default(1)
+  /// Type de conditionnement : "boîte", "flacon", "sachet"…
+  packUnit       String  @default("boîte")
+
+  // -- Réglementation --------------------------------------------------------
+  /// Numéro d'Autorisation de Mise sur le Marché.
+  /// ⚠️ Format à valider avec l'autorité réglementaire nationale compétente.
+  ammNumber          String?
+  /// Inscrit sur la liste nationale des médicaments essentiels.
+  isEssential        Boolean @default(false)
+  /// Stupéfiant ou psychotrope soumis à réglementation spéciale.
+  isControlled       Boolean @default(false)
+  /// Tableau de classement (I, II, III…) selon la réglementation nationale.
+  /// ⚠️ À valider selon les textes légaux en vigueur.
+  controlledSchedule String?
+  /// Médicament d'un programme vertical de santé publique.
+  isProgramDrug      Boolean @default(false)
+  /// Nom du programme : "VIH/ARV", "PNLP", "PNT", "PEV", "SANTÉ MATERNELLE"…
+  programName        String?
+
+  // -- Stockage --------------------------------------------------------------
+  /// Conditions de stockage requises (tableau — plusieurs peuvent s'appliquer).
+  storageConditions StorageCondition[]
+  /// Nécessite une chaîne du froid active (2–8 °C ou moins).
+  requiresColdChain Boolean            @default(false)
+  /// Température minimale de stockage en °C (pour supervision chaîne du froid).
+  minTemp           Float?
+  /// Température maximale de stockage en °C.
+  maxTemp           Float?
+
+  // -- Prix ------------------------------------------------------------------
+  /// Prix unitaire de vente en francs congolais (CDF).
+  /// ⚠️ Vérifier si le prix est libre ou réglementé par le Ministère.
+  unitPriceCDF     Decimal? @db.Decimal(12, 2)
+  /// Prix unitaire de vente en dollars américains (USD).
+  unitPriceUSD     Decimal? @db.Decimal(10, 4)
+  /// Prix soumis à réglementation tarifaire officielle.
+  isPriceRegulated Boolean  @default(false)
+
+  // -- Seuils de stock -------------------------------------------------------
+  /// Seuil déclenchant une alerte LOW_STOCK (unités de dispensation).
+  minStockLevel      Int @default(0)
+  /// Seuil déclenchant une alerte CRITICAL_STOCK (commande urgente).
+  criticalStockLevel Int @default(0)
+  /// Niveau de stock déclenchant une commande de réapprovisionnement.
+  reorderPoint       Int @default(0)
+  /// Quantité suggérée à commander à chaque réapprovisionnement.
+  reorderQuantity    Int @default(0)
+
+  isActive Boolean @default(true)
+  notes    String?
+
+  // -- Relations -------------------------------------------------------------
+  batches            Batch[]
+  prescriptionLines  PrescriptionLine[]
+  orderLines         PurchaseOrderLine[]
+  alerts             StockAlert[]
+  dispensationLines  DispensationLine[]
+  internalUsageLines InternalUsageLine[]
+  inventoryLines     InventoryLine[]
+  substituteLinks_A  DrugSubstitute[]      @relation("DrugA")
+  substituteLinks_B  DrugSubstitute[]      @relation("DrugB")
+  interactionsAsA    DrugInteraction[]     @relation("DrugInteractionA")
+  interactionsAsB    DrugInteraction[]     @relation("DrugInteractionB")
+  transferLines      TransferOrderLine[]
+  controlledEntries  ControlledDrugEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dci])
+  @@index([category])
+  @@index([isControlled])
+  @@index([isProgramDrug])
+  @@index([isActive])
+  @@map("drugs")
+}
+
+/// Table de jonction pour les relations de substitution entre médicaments.
+/// Correction de la v1 : la relation auto-référentielle "@relation("DrugSubstitutes")"
+/// dupliquée est invalide en Prisma — elle génère une erreur de validation.
+/// Ici on utilise une table explicite qui permet en plus de stocker des métadonnées.
+model DrugSubstitute {
+  id         String  @id @default(cuid())
+  /// Médicament d'origine (celui prescrit ou en rupture).
+  drugA      Drug    @relation("DrugA", fields: [drugAId], references: [id])
+  drugAId    String
+  /// Médicament de substitution proposé.
+  drugB      Drug    @relation("DrugB", fields: [drugBId], references: [id])
+  drugBId    String
+  /// Substitution approuvée par un pharmacien (si false : proposition non validée).
+  isApproved Boolean @default(false)
+  /// Commentaire clinique justifiant la substitution (dosage équivalent, posologie…).
+  notes      String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([drugAId, drugBId])
+  @@map("drug_substitutes")
+}
+
+/// Interactions médicamenteuses connues.
+/// Alimente la vérification lors de la dispensation (interactionCheckDone).
+/// À alimenter depuis une base de référence validée (BNF, Vidal, base ANSM…).
+model DrugInteraction {
+  id             String  @id @default(cuid())
+  drugA          Drug    @relation("DrugInteractionA", fields: [drugAId], references: [id])
+  drugAId        String
+  drugB          Drug    @relation("DrugInteractionB", fields: [drugBId], references: [id])
+  drugBId        String
+  /// Niveau de sévérité : "CONTRE_INDICATION", "MAJEURE", "MODEREE", "MINEURE".
+  severity       String
+  /// Description clinique de l'interaction (mécanisme, conséquences).
+  description    String
+  /// Recommandation : surveiller, éviter, contre-indiquer, espacer les prises…
+  recommendation String?
+  /// Source de référence (nom de la base ou publication).
+  source         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([drugAId, drugBId])
+  @@index([drugAId])
+  @@index([drugBId])
+  @@map("drug_interactions")
+}
+
+// =============================================================================
+// FOURNISSEURS
+// =============================================================================
+
+/// Fournisseur de médicaments et consommables.
+/// Inclut les grossistes, fabricants, ONG, programmes d'État.
+model Supplier {
+  id            String       @id @default(cuid())
+  /// Code court interne (ex: "SUP-001", "OMS-RDC").
+  code          String       @unique
+  name          String
+  type          SupplierType
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  city          String?
+  country       String       @default("RDC")
+
+  // -- Réglementation --------------------------------------------------------
+  /// Numéro d'agrément ou de licence d'importation/distribution.
+  /// ⚠️ À valider selon les textes réglementaires en vigueur.
+  licenseNumber String?
+  /// Date d'expiration de la licence — déclenche une alerte LICENSE_EXPIRY.
+  licenseExpiry DateTime?
+
+  // -- Finances --------------------------------------------------------------
+  /// Délai de paiement convenu en jours (ex: 30, 60, 90).
+  paymentTermsDays   Int?
+  /// Devise préférentielle pour la facturation.
+  currencyPreference String @default("USD")
+
+  isActive Boolean @default(true)
+  notes    String?
+
+  batches        Batch[]
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("suppliers")
+}
+
+// =============================================================================
+// LOTS & STOCK
+// =============================================================================
+
+/// Lot physique d'un médicament (unité de traçabilité principale).
+/// Un lot = un numéro de lot fabricant + une date de péremption + une entrée.
+/// ⚠️ Ne JAMAIS modifier currentQuantity directement — passer par StockMovement.
+model Batch {
+  id              String         @id @default(cuid())
+  /// Numéro de lot tel qu'imprimé sur l'emballage fabricant.
+  batchNumber     String
+  drug            Drug           @relation(fields: [drugId], references: [id])
+  drugId          String
+  supplier        Supplier?      @relation(fields: [supplierId], references: [id])
+  supplierId      String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId String?
+
+  // -- Quantités -------------------------------------------------------------
+  /// Quantité reçue à l'entrée en stock (en unités de dispensation).
+  initialQuantity Int
+  /// Quantité actuelle — mise à jour synchronisée avec chaque StockMovement.
+  /// Vérifiable à tout moment par : SELECT SUM(quantity) FROM stock_movements WHERE batch_id = ?
+  currentQuantity Int
+
+  // -- Dates -----------------------------------------------------------------
+  manufacturingDate DateTime?
+  /// Date de péremption — obligatoire. Déclenche EXPIRY_SOON puis EXPIRED.
+  expiryDate        DateTime
+  receivedAt        DateTime  @default(now())
+
+  // -- Prix d'achat ----------------------------------------------------------
+  /// Prix d'achat unitaire en CDF — pour valorisation du stock.
+  purchasePriceCDF Decimal? @db.Decimal(12, 2)
+  /// Prix d'achat unitaire en USD.
+  purchasePriceUSD Decimal? @db.Decimal(10, 4)
+
+  // -- Localisation physique -------------------------------------------------
+  /// Emplacement physique dans la pharmacie (étagère, zone…).
+  locationId String?
+  location   StorageLocation? @relation(fields: [locationId], references: [id])
+
+  // -- Chaîne du froid -------------------------------------------------------
+  /// Chaîne du froid vérifiée et conforme à la réception.
+  coldChainVerified Boolean        @default(false)
+  coldChainLogs     ColdChainLog[]
+
+  // -- État ------------------------------------------------------------------
+  /// Lot mis en quarantaine (doute qualité, litige) — non dispensable.
+  isQuarantined    Boolean @default(false)
+  quarantineReason String?
+  /// false = lot épuisé ou définitivement retiré du stock actif.
+  isActive         Boolean @default(true)
+
+  movements          StockMovement[]
+  alerts             StockAlert[]
+  dispensationLines  DispensationLine[]
+  internalUsageLines InternalUsageLine[]
+  inventoryLines     InventoryLine[]
+  transferLines      TransferOrderLine[]
+  controlledEntries  ControlledDrugEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Un numéro de lot est unique par médicament (un même lot ne peut pas exister
+  /// deux fois pour le même Drug, mais peut exister pour deux Drugs différents).
+  @@unique([batchNumber, drugId])
+  @@index([drugId])
+  @@index([expiryDate])
+  @@index([isActive])
+  @@index([isQuarantined])
+  @@map("batches")
+}
+
+/// Emplacement physique de stockage dans la pharmacie.
+/// Permet la localisation rapide des lots lors de la préparation.
+model StorageLocation {
+  id          String  @id @default(cuid())
+  /// Code de localisation lisible : "A-01-03" = allée A, étagère 01, position 03.
+  code        String  @unique
+  name        String
+  description String?
+  /// Zone fonctionnelle : "REFRIGERE", "STUPEFIANT", "GENERAL", "QUARANTAINE".
+  zone        String?
+  isActive    Boolean @default(true)
+
+  batches Batch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("storage_locations")
+}
+
+/// Enregistrement de température pour la surveillance de la chaîne du froid.
+/// Doit être alimenté automatiquement par un système de capteurs si disponible,
+/// ou manuellement par relevés sur registre papier transcrit.
+model ColdChainLog {
+  id          String   @id @default(cuid())
+  batch       Batch    @relation(fields: [batchId], references: [id])
+  batchId     String
+  /// Température mesurée en degrés Celsius.
+  temperature Float
+  recordedAt  DateTime @default(now())
+  /// Identifiant du capteur ou nom de l'utilisateur ayant fait le relevé.
+  recordedBy  String?
+  /// true si la température est hors des limites acceptables pour ce lot.
+  isAlert     Boolean  @default(false)
+  notes       String?
+
+  @@index([batchId])
+  @@index([recordedAt])
+  @@map("cold_chain_logs")
+}
+
+// =============================================================================
+// MOUVEMENTS DE STOCK (EVENT SOURCING LÉGER)
+// =============================================================================
+// RÈGLE D'OR : toute variation de stock passe par ici.
+// currentQuantity sur Batch = somme algébrique de tous ses StockMovements.
+// En production, envisager un trigger PostgreSQL qui maintient la cohérence.
+
+/// Enregistrement immuable de chaque variation de stock.
+/// Ne jamais permettre UPDATE ou DELETE sur cette table en production.
+model StockMovement {
+  id      String @id @default(cuid())
+  batch   Batch  @relation(fields: [batchId], references: [id])
+  batchId String
+
+  type           MovementType
+  /// Positif pour les entrées, négatif pour les sorties.
+  quantity       Int
+  /// Snapshot du stock avant ce mouvement (pour audit sans recalcul).
+  quantityBefore Int
+  /// Snapshot du stock après ce mouvement (= quantityBefore + quantity).
+  quantityAfter  Int
+
+  // -- Contexte métier -------------------------------------------------------
+  // Au moins un des champs contextuels suivants doit être renseigné pour
+  // les sorties. Les entrées sont liées à une PurchaseOrder ou un don.
+  dispensationLineId String?
+  dispensationLine   DispensationLine?  @relation(fields: [dispensationLineId], references: [id])
+  purchaseOrderId    String?
+  purchaseOrder      PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id])
+  inventoryId        String?
+  inventory          PhysicalInventory? @relation(fields: [inventoryId], references: [id])
+  internalUsageId    String?
+  internalUsage      InternalUsage?     @relation(fields: [internalUsageId], references: [id])
+  transferOrderId    String?
+  transferOrder      TransferOrder?     @relation(fields: [transferOrderId], references: [id])
+  /// Référence de bon de don (entrant ou sortant).
+  donationRef        String?
+
+  /// Explication libre (obligatoire pour LOSS, INVENTORY_NEGATIVE).
+  reason       String?
+  /// Numéro de document papier correspondant (bon de sortie, facture…).
+  referenceDoc String?
+
+  // -- Auteur ----------------------------------------------------------------
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([batchId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([createdById])
+  @@index([dispensationLineId])
+  @@map("stock_movements")
+}
+
+// =============================================================================
+// PATIENTS
+// =============================================================================
+// ⚠️ Données personnelles de santé — sensibles.
+// Recommandations production :
+//   - Chiffrement au repos des colonnes sensibles (pgcrypto / chiffrement disque)
+//   - Accès conditionnel selon le rôle (médecin/pharmacien uniquement)
+//   - Journalisation de tout accès à ces données dans AuditLog
+//   - Vérifier les obligations légales de conservation applicables
+
+/// Dossier patient pharmaceutique.
+/// Si l'hôpital dispose d'un SIH (Système d'Information Hospitalier),
+/// externalId permet de lier ce dossier au patient dans le SIH.
+model Patient {
+  id             String  @id @default(cuid())
+  /// Numéro de dossier hospitalier — identifiant principal, affiché sur les documents.
+  hospitalNumber String  @unique
+  /// Identifiant dans le SIH externe (si intégration HIS/HL7 FHIR).
+  externalId     String?
+
+  // -- Identité --------------------------------------------------------------
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  gender      Gender    @default(UNKNOWN)
+  /// Numéro de carte d'identité nationale (optionnel, non toujours disponible).
+  nationalId  String?
+
+  // -- Contact & localisation ------------------------------------------------
+  phone      String?
+  address    String?
+  /// Commune de résidence (découpage administratif local).
+  commune    String?
+  territoire String?
+  province   String?
+
+  // -- Prise en charge financière --------------------------------------------
+  insuranceId    String?
+  insurance      Insurance? @relation(fields: [insuranceId], references: [id])
+  /// Référence du dossier de prise en charge ONG ou programme (ex: numéro RASS).
+  ongCoverageRef String?
+
+  // -- Programmes de santé ---------------------------------------------------
+  // ⚠️ Ces données sont ultra-sensibles. Accès strictement restreint.
+  /// Patient suivi dans le programme VIH/ARV.
+  isHivPatient Boolean?
+  /// Code patient dans le programme ARV (ex: code PNAME).
+  arvCode      String?
+  /// Patient suivi dans le programme tuberculose.
+  isTbPatient  Boolean?
+  /// Code patient dans le programme PNT.
+  tbCode       String?
+
+  // -- Sécurité clinique -----------------------------------------------------
+  /// Liste des allergies médicamenteuses connues — vérifiée à chaque dispensation.
+  allergies         PatientAllergy[]
+  /// Pathologies chroniques connues (diabète, HTA, insuffisance rénale…).
+  /// Stocké en tableau pour flexibilité — envisager une table dédiée pour l'ICD-10.
+  chronicConditions String[]
+
+  isActive Boolean @default(true)
+  /// ⚠️ Éviter toute information médicale sensible dans ce champ libre.
+  notes    String?
+
+  prescriptions Prescription[]
+  dispensations Dispensation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hospitalNumber])
+  @@index([lastName, firstName])
+  @@map("patients")
+}
+
+/// Allergie médicamenteuse documentée d'un patient.
+/// Doit être vérifiée systématiquement avant toute dispensation.
+model PatientAllergy {
+  id          String          @id @default(cuid())
+  patient     Patient         @relation(fields: [patientId], references: [id])
+  patientId   String
+  /// Médicament, classe pharmacologique ou substance allergisante.
+  substance   String
+  /// Description clinique de la réaction observée.
+  reaction    String?
+  severity    AllergySeverity
+  /// Date à laquelle l'allergie a été confirmée médicalement.
+  confirmedAt DateTime?
+  /// Nom ou matricule du praticien ayant confirmé l'allergie.
+  confirmedBy String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+  @@map("patient_allergies")
+}
+
+/// Organisme d'assurance ou de prise en charge.
+model Insurance {
+  id           String        @id @default(cuid())
+  name         String // Ex: "CNSS", "Mutuelle des enseignants", "AXA Assurance"
+  type         InsuranceType
+  /// Taux de couverture en pourcentage (ex: 80.00 = 80%).
+  coverageRate Decimal?      @db.Decimal(5, 2)
+  contactInfo  String?
+  isActive     Boolean       @default(true)
+
+  patients Patient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("insurances")
+}
+
+// =============================================================================
+// ORDONNANCES & DISPENSATION
+// =============================================================================
+
+/// Ordonnance médicale (prescription).
+/// Une ordonnance peut donner lieu à une ou plusieurs dispensations
+/// (dispensation fractionnée, rupture partielle, retour après correction).
+model Prescription {
+  id                 String           @id @default(cuid())
+  /// Numéro lisible généré par séquence PostgreSQL (plus clair qu'un cuid).
+  /// Exemple de format : "ORD-2024-000001"
+  /// En production, utiliser : @default(dbgenerated("'ORD-' || to_char(now(),'YYYY') || '-' || lpad(nextval('prescription_seq')::text, 6, '0')"))
+  prescriptionNumber String           @unique @default(cuid())
+  patient            Patient          @relation(fields: [patientId], references: [id])
+  patientId          String
+  prescribedBy       User             @relation(fields: [prescribedById], references: [id])
+  prescribedById     String
+  service            HospitalService? @relation(fields: [serviceId], references: [id])
+  serviceId          String?
+
+  // -- Type & contexte -------------------------------------------------------
+  /// true = patient hospitalisé (inpatient) ; false = consultation externe.
+  isInpatient  Boolean   @default(false)
+  /// Numéro de dossier d'hospitalisation si patient inpatient.
+  admissionRef String?
+  visitDate    DateTime  @default(now())
+  /// Date limite de validité de l'ordonnance. Après cette date → statut EXPIRED.
+  validUntil   DateTime?
+
+  status PrescriptionStatus @default(PENDING)
+
+  // -- Diagnostic ------------------------------------------------------------
+  /// Code diagnostique (CIM-10 recommandé — vérifier le codage utilisé localement).
+  diagnosisCode  String?
+  /// Libellé diagnostique en clair.
+  diagnosisLabel String?
+
+  lines         PrescriptionLine[]
+  dispensations Dispensation[]
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([status])
+  @@index([visitDate])
+  @@index([prescribedById])
+  @@map("prescriptions")
+}
+
+/// Ligne d'une ordonnance (un médicament prescrit).
+model PrescriptionLine {
+  id             String       @id @default(cuid())
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+  prescriptionId String
+  drug           Drug         @relation(fields: [drugId], references: [id])
+  drugId         String
+  /// Numéro d'ordre dans l'ordonnance (pour affichage et impression).
+  lineNumber     Int
+
+  // -- Posologie -------------------------------------------------------------
+  quantityPrescribed Int
+  /// Posologie complète en clair : "1 comprimé matin et soir pendant 7 jours".
+  dosage             String
+  /// Fréquence structurée : "2 fois par jour", "toutes les 8h"…
+  frequency          String?
+  /// Durée du traitement en jours.
+  durationDays       Int?
+  /// Voie d'administration : "orale", "IV", "IM", "SC", "topique"…
+  route              String?
+  /// Instructions spéciales au patient ou à l'infirmier.
+  instructions       String?
+
+  // -- Suivi dispensation ----------------------------------------------------
+  /// Cumul des quantités dispensées sur cette ligne (toutes dispensations confondues).
+  quantityDispensed Int     @default(0)
+  /// true quand quantityDispensed >= quantityPrescribed.
+  isFulfilled       Boolean @default(false)
+  /// Un générique ou substitut a été dispensé à la place du médicament prescrit.
+  substituteUsed    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([prescriptionId])
+  @@index([drugId])
+  @@map("prescription_lines")
+}
+
+/// Acte de dispensation (un passage au guichet pharmacie).
+/// Une dispensation peut couvrir une ou plusieurs lignes d'ordonnance.
+/// Une dispensation sans ordonnance (urgence) est possible : prescriptionId = null.
+model Dispensation {
+  id                 String        @id @default(cuid())
+  /// Numéro de reçu lisible — même logique que prescriptionNumber.
+  dispensationNumber String        @unique @default(cuid())
+  patient            Patient       @relation(fields: [patientId], references: [id])
+  patientId          String
+  prescription       Prescription? @relation(fields: [prescriptionId], references: [id])
+  /// null = dispensation directe sans ordonnance (urgence, OTC selon protocole).
+  prescriptionId     String?
+
+  // -- Personnel -------------------------------------------------------------
+  /// Technicien ou pharmacien ayant préparé et remis les médicaments.
+  dispensedBy   User     @relation(fields: [dispensedById], references: [id])
+  dispensedById String
+  dispensedAt   DateTime @default(now())
+
+  // -- Validation pharmaceutique ---------------------------------------------
+  /// Pharmacien ayant validé la dispensation (peut être le même que dispensedBy).
+  verifiedById         String?
+  verifiedAt           DateTime?
+  /// Contrôle des allergies effectué et documenté.
+  allergyCheckDone     Boolean   @default(false)
+  /// Contrôle des interactions médicamenteuses effectué et documenté.
+  interactionCheckDone Boolean   @default(false)
+
+  // -- Paiement --------------------------------------------------------------
+  paymentMethod     PaymentMethod
+  totalAmountCDF    Decimal?      @db.Decimal(12, 2)
+  totalAmountUSD    Decimal?      @db.Decimal(10, 4)
+  amountPaidCDF     Decimal?      @db.Decimal(12, 2)
+  amountPaidUSD     Decimal?      @db.Decimal(10, 4)
+  /// Montant pris en charge par l'assurance (en CDF).
+  insuranceCoverage Decimal?      @db.Decimal(12, 2)
+  /// Numéro de reçu émis par la caisse.
+  receiptNumber     String?
+
+  lines DispensationLine[]
+
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+  @@index([dispensedAt])
+  @@index([prescriptionId])
+  @@map("dispensations")
+}
+
+/// Ligne d'une dispensation (un médicament dispensé, lié à un lot précis).
+/// Le lien au Batch est la clé de traçabilité : on sait exactement quel lot
+/// a été remis à quel patient à quelle date.
+model DispensationLine {
+  id             String       @id @default(cuid())
+  dispensation   Dispensation @relation(fields: [dispensationId], references: [id])
+  dispensationId String
+  /// Lot physique dispensé — garantit la traçabilité complète.
+  batch          Batch        @relation(fields: [batchId], references: [id])
+  batchId        String
+  /// Médicament (dénormalisé pour performance des rapports, cohérent avec batch.drugId).
+  drug           Drug         @relation(fields: [drugId], references: [id])
+  drugId         String
+
+  /// Quantité dispensée (en unités de dispensation).
+  quantity      Int
+  unitPriceCDF  Decimal? @db.Decimal(12, 2)
+  unitPriceUSD  Decimal? @db.Decimal(10, 4)
+  totalPriceCDF Decimal? @db.Decimal(12, 2)
+  totalPriceUSD Decimal? @db.Decimal(10, 4)
+
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+
+  @@index([dispensationId])
+  @@index([batchId])
+  @@index([drugId])
+  @@map("dispensation_lines")
+}
+
+// =============================================================================
+// USAGE INTERNE (soins, bloc opératoire, urgences)
+// =============================================================================
+// Distinct de la dispensation patient : médicaments consommés directement
+// par les services de soins sans être remis nominativement à un patient.
+
+/// Bon de sortie interne pour usage dans un service hospitalier.
+model InternalUsage {
+  id            String          @id @default(cuid())
+  service       HospitalService @relation(fields: [serviceId], references: [id])
+  serviceId     String
+  requestedBy   User            @relation(fields: [requestedById], references: [id])
+  requestedById String
+  usedAt        DateTime        @default(now())
+  /// Description de l'usage : "Acte chirurgical - appendicectomie", "Soins infirmiers"…
+  purpose       String
+  /// Numéro du bon de sortie interne papier (pour rapprochement documents).
+  referenceDoc  String?
+
+  lines          InternalUsageLine[]
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+
+  @@index([serviceId])
+  @@index([usedAt])
+  @@map("internal_usages")
+}
+
+/// Ligne d'un bon d'usage interne.
+model InternalUsageLine {
+  id              String        @id @default(cuid())
+  internalUsage   InternalUsage @relation(fields: [internalUsageId], references: [id])
+  internalUsageId String
+  /// Lot physique utilisé (traçabilité équivalente à la dispensation).
+  batch           Batch         @relation(fields: [batchId], references: [id])
+  batchId         String
+  /// Médicament (dénormalisé pour performance).
+  drug            Drug          @relation(fields: [drugId], references: [id])
+  drugId          String
+  quantity        Int
+
+  createdAt DateTime @default(now())
+
+  @@index([internalUsageId])
+  @@map("internal_usage_lines")
+}
+
+// =============================================================================
+// TRANSFERTS INTER-SERVICES
+// =============================================================================
+// La v1 référençait transferId sur StockMovement sans modèle cible.
+// Ce modèle comble ce manque et permet de tracer les flux entre services.
+
+/// Transfert de médicaments entre services hospitaliers ou entre sites.
+model TransferOrder {
+  id             String          @id @default(cuid())
+  /// Numéro de bon de transfert (lisible sur document papier).
+  transferNumber String          @unique @default(cuid())
+  fromService    HospitalService @relation("TransferFrom", fields: [fromServiceId], references: [id])
+  fromServiceId  String
+  toService      HospitalService @relation("TransferTo", fields: [toServiceId], references: [id])
+  toServiceId    String
+  requestedBy    User            @relation("TransferRequester", fields: [requestedById], references: [id])
+  requestedById  String
+  /// Pharmacien ayant approuvé le transfert.
+  approvedBy     User?           @relation("TransferApprover", fields: [approvedById], references: [id])
+  approvedById   String?
+
+  status      TransferStatus @default(REQUESTED)
+  requestedAt DateTime       @default(now())
+  approvedAt  DateTime?
+  receivedAt  DateTime?
+  /// Motif du transfert (rupture locale, partage de stock, urgence…).
+  reason      String?
+  notes       String?
+
+  lines          TransferOrderLine[]
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fromServiceId])
+  @@index([toServiceId])
+  @@index([status])
+  @@map("transfer_orders")
+}
+
+/// Ligne d'un bon de transfert.
+model TransferOrderLine {
+  id                  String        @id @default(cuid())
+  transferOrder       TransferOrder @relation(fields: [transferOrderId], references: [id])
+  transferOrderId     String
+  batch               Batch         @relation(fields: [batchId], references: [id])
+  batchId             String
+  drug                Drug          @relation(fields: [drugId], references: [id])
+  drugId              String
+  quantityRequested   Int
+  quantityTransferred Int           @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([transferOrderId])
+  @@map("transfer_order_lines")
+}
+
+// =============================================================================
+// REGISTRE STUPÉFIANTS & PSYCHOTROPES
+// =============================================================================
+// Exigence réglementaire universelle : tout mouvement de substance contrôlée
+// doit être enregistré dans un registre spécial avec double signature.
+// Ce registre est distinct des StockMovements classiques pour faciliter
+// le reporting réglementaire et les inspections.
+
+/// Entrée dans le registre des stupéfiants et psychotropes.
+/// Chaque entrée correspond à un mouvement d'une substance contrôlée.
+model ControlledDrugEntry {
+  id          String @id @default(cuid())
+  /// Numéro séquentiel dans le registre (continu, sans trous — obligatoire).
+  entryNumber Int    @unique @default(autoincrement())
+  drug        Drug   @relation(fields: [drugId], references: [id])
+  drugId      String
+  batch       Batch  @relation(fields: [batchId], references: [id])
+  batchId     String
+
+  movementType  MovementType
+  quantity      Int // positif = entrée, négatif = sortie
+  /// Stock de la substance dans le registre avant ce mouvement.
+  balanceBefore Int
+  /// Stock de la substance dans le registre après ce mouvement.
+  balanceAfter  Int
+
+  /// Patient concerné si sortie pour dispensation (obligatoire pour les sorties).
+  patientName     String?
+  patientId       String?
+  /// Prescripteur si sortie sur ordonnance.
+  prescriberName  String?
+  prescriptionRef String?
+
+  /// Premier signataire (pharmacien ou technicien).
+  signedBy          User      @relation(fields: [signedById], references: [id])
+  signedById        String
+  /// Second signataire requis pour les substances de tableau I (double clé).
+  /// ⚠️ Activer selon la réglementation locale et le controlledSchedule du Drug.
+  counterSignedById String?
+  counterSignedAt   DateTime?
+
+  entryDate DateTime @default(now())
+  notes     String?
+
+  @@index([drugId])
+  @@index([entryDate])
+  @@map("controlled_drug_entries")
+}
+
+// =============================================================================
+// COMMANDES FOURNISSEURS
+// =============================================================================
+
+/// Bon de commande émis vers un fournisseur.
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  orderNumber String   @unique
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  supplierId  String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+
+  status           OrderStatus @default(DRAFT)
+  orderDate        DateTime    @default(now())
+  expectedDelivery DateTime?
+  deliveredAt      DateTime?
+
+  // -- Finances --------------------------------------------------------------
+  /// Devise principale de la commande.
+  currencyCode   String        @default("USD")
+  totalAmountUSD Decimal?      @db.Decimal(12, 4)
+  totalAmountCDF Decimal?      @db.Decimal(14, 2)
+  /// Numéro de facture fournisseur reçue.
+  invoiceRef     String?
+  paymentStatus  PaymentStatus @default(PENDING)
+
+  lines          PurchaseOrderLine[]
+  batches        Batch[]
+  stockMovements StockMovement[]
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supplierId])
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+/// Ligne d'un bon de commande (un médicament commandé).
+model PurchaseOrderLine {
+  id              String        @id @default(cuid())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId String
+  drug            Drug          @relation(fields: [drugId], references: [id])
+  drugId          String
+
+  quantityOrdered  Int
+  /// Quantité effectivement reçue (mise à jour à chaque réception partielle ou totale).
+  quantityReceived Int      @default(0)
+  unitPriceUSD     Decimal? @db.Decimal(10, 4)
+  unitPriceCDF     Decimal? @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([drugId])
+  @@map("purchase_order_lines")
+}
+
+// =============================================================================
+// INVENTAIRE PHYSIQUE
+// =============================================================================
+
+/// Session d'inventaire physique du stock.
+/// Un inventaire doit être validé par un pharmacien avant de générer
+/// les ajustements de stock (mouvements INVENTORY_POSITIVE / INVENTORY_NEGATIVE).
+model PhysicalInventory {
+  id            String    @id @default(cuid())
+  reference     String    @unique
+  conductedBy   User      @relation(fields: [conductedById], references: [id])
+  conductedById String
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  isValidated   Boolean   @default(false)
+  /// Matricule du pharmacien validateur.
+  validatedById String?
+  validatedAt   DateTime?
+
+  lines          InventoryLine[]
+  stockMovements StockMovement[]
+
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([isValidated])
+  @@map("physical_inventories")
+}
+
+/// Ligne d'inventaire pour un lot donné.
+model InventoryLine {
+  id          String            @id @default(cuid())
+  inventory   PhysicalInventory @relation(fields: [inventoryId], references: [id])
+  inventoryId String
+  /// Lot concerné par ce comptage.
+  batch       Batch             @relation(fields: [batchId], references: [id])
+  batchId     String
+  /// Médicament (dénormalisé pour performance).
+  drug        Drug              @relation(fields: [drugId], references: [id])
+  drugId      String
+
+  /// Quantité attendue selon le système (au moment du comptage).
+  theoreticalQty  Int
+  /// Quantité effectivement comptée physiquement.
+  countedQty      Int
+  /// Écart = countedQty - theoreticalQty. Positif = excédent, négatif = manquant.
+  discrepancy     Int
+  /// Explication de l'écart (obligatoire si discrepancy ≠ 0).
+  discrepancyNote String?
+
+  createdAt DateTime @default(now())
+
+  @@index([inventoryId])
+  @@index([batchId])
+  @@map("inventory_lines")
+}
+
+// =============================================================================
+// ALERTES
+// =============================================================================
+
+/// Alerte système générée automatiquement (stock bas, péremption, chaîne du froid…).
+/// Doit être générée par un job planifié (cron), pas à la demande.
+model StockAlert {
+  id           String      @id @default(cuid())
+  drug         Drug        @relation(fields: [drugId], references: [id])
+  drugId       String
+  /// Lot concerné (optionnel — pertinent pour EXPIRY_SOON, EXPIRED, COLD_CHAIN_BREACH).
+  batch        Batch?      @relation(fields: [batchId], references: [id])
+  batchId      String?
+  type         AlertType
+  status       AlertStatus @default(ACTIVE)
+  /// Message lisible décrivant l'alerte (affiché dans l'interface).
+  message      String
+  /// Valeur du seuil qui a déclenché l'alerte (ex: 10 pour minStockLevel = 10).
+  threshold    Int?
+  /// Valeur actuelle au moment de l'alerte (ex: stock = 3, ou 15 jours avant péremption).
+  currentValue Int?
+
+  acknowledgedAt   DateTime?
+  acknowledgements AlertAcknowledgement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([drugId])
+  @@index([type, status])
+  @@index([batchId])
+  @@map("stock_alerts")
+}
+
+/// Prise en charge d'une alerte par un utilisateur.
+model AlertAcknowledgement {
+  id        String     @id @default(cuid())
+  alert     StockAlert @relation(fields: [alertId], references: [id])
+  alertId   String
+  user      User       @relation(fields: [userId], references: [id])
+  userId    String
+  /// Commentaire obligatoire si l'alerte est IGNORED.
+  comment   String?
+  createdAt DateTime   @default(now())
+
+  @@map("alert_acknowledgements")
+}
+
+// =============================================================================
+// JOURNAL D'AUDIT (immuable)
+// =============================================================================
+// ⚠️ Ne jamais permettre UPDATE ou DELETE sur cette table en production.
+// Implémenter via :
+//   1. Révocation des droits DELETE sur la table dans PostgreSQL
+//   2. Trigger PostgreSQL bloquant les UPDATE/DELETE
+//   3. Ou utiliser une table partitionnée par mois avec partitions en lecture seule
+
+/// Enregistrement immuable de toute action significative dans le système.
+/// Utilisé pour la conformité, les audits et l'investigation d'incidents.
+model AuditLog {
+  id        String  @id @default(cuid())
+  user      User?   @relation(fields: [userId], references: [id])
+  /// null si action système automatique (cron, trigger…).
+  userId    String?
+  ipAddress String?
+  userAgent String?
+
+  /// Action effectuée : "DISPENSATION_CREATE", "BATCH_QUARANTINE", "USER_LOGIN_FAILED"…
+  action   String
+  /// Modèle Prisma concerné : "Dispensation", "Batch", "User"…
+  entity   String
+  entityId String?
+  /// Diff JSON avant/après. ⚠️ Ne jamais inclure de données patient identifiantes.
+  changes  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// CONFIGURATION SYSTÈME
+// =============================================================================
+
+/// Paramètres de configuration de l'application (modifiables sans redéploiement).
+/// Toutes les valeurs sont stockées en String et castées dans la couche applicative.
+model SystemConfig {
+  id          String   @id @default(cuid())
+  /// Clé unique du paramètre (ex: "hospital.name", "alert.expiryWarningDays").
+  key         String   @unique
+  value       String
+  description String?
+  /// Matricule de l'utilisateur ayant effectué la dernière modification.
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+// =============================================================================
+// VALEURS SystemConfig À INITIALISER EN PRODUCTION
+// =============================================================================
+// Insérer ces valeurs via un seed Prisma ou une migration SQL initiale :
+//
+// "hospital.name"                → "Hôpital Général de Référence de ..."
+// "hospital.province"            → "Kinshasa"            (ou autre)
+// "currency.primary"             → "CDF"
+// "currency.secondary"           → "USD"
+// "alert.expiryWarningDays"      → "90"                  (alerter 90j avant péremption)
+// "alert.criticalExpiryDays"     → "30"
+// "alert.lowStockEnabled"        → "true"
+// "inventory.frequencyDays"      → "30"                  (inventaire mensuel)
+// "coldChain.alertTempMax"       → "8"                   (°C max pour REFRIGERATED)
+// "coldChain.alertTempMin"       → "2"
+// "controlled.requireDualSign"   → "true"                (double signature stupéfiants)
+// "controlled.schedulesDualSign" → "I,II"                (tableaux concernés)
+// "session.refreshTokenTtlDays"  → "30"
+// "session.accessTokenTtlMin"    → "15"
+// "prescription.validityDays"    → "3"                   (validité ordonnance en jours)
+// "dispensation.allowWithoutRx"  → "false"               (dispensation sans ordonnance)
