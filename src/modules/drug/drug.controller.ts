@@ -14,7 +14,7 @@ import {
 } from "./drug.services.js";
 import { AppError } from "../../lib/error.js";
 
-const paramsSchema = z.object({ id: z.string().uuid() });
+const paramsSchema = z.object({ id: z.string() });
 
 export class DrugController {
   list = async (request: FastifyRequest, reply: FastifyReply) => {
