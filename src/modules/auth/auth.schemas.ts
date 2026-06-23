@@ -11,9 +11,11 @@ export const registerSchema = z.object({
     .string()
     .min(8, "Le mot de passe doit faire au moins 8 caractères")
     .max(128),
-  role: z.nativeEnum(UserRole, {
-    errorMap: () => ({ message: "Rôle invalide" }),
-  }),
+  role: z
+    .nativeEnum(UserRole)
+    .refine((val) => Object.values(UserRole).includes(val), {
+      message: "Rôle invalide",
+    }),
   serviceId: z.string().cuid().optional(),
 });
 
