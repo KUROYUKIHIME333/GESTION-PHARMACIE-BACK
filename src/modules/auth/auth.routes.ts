@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
-import { registerSchema, loginSchema } from "./auth.schemas.js";
-import { registerUser, loginUser, getCurrentUser } from "./auth.services.js";
+// import { registerSchema, loginSchema } from "./auth.schemas.js";
+// import { registerUser, loginUser, getCurrentUser } from "./auth.services.js";
 import { requireAuth } from "../../plugins/auth.plugins.js";
-import { ValidationError } from "../../lib/error.js";
-import { ZodError } from "zod";
+// import { ValidationError } from "../../lib/error.js";
+// import { ZodError } from "zod";
 import { authController } from "./auth.controller.js";
 
 export async function authRoutes(
@@ -64,12 +64,12 @@ export async function authRoutes(
 
   // GET /api/auth/me
   fastify.get("/me", {
-    schema: {
-      description: "Récupérer l'utilisateur connecté",
-      tags: ["Auth"],
-      security: [{ bearerAuth: [] }],
-    },
+    // schema: {
+    //   description: "Récupérer l'utilisateur connecté",
+    //   tags: ["Auth"],
+    //   security: [{ bearerAuth: [] }],
+    // },
     preHandler: [requireAuth],
-    handler: authController.getMe.bind(authController),
+    handler: authController.getMe,
   });
 }
