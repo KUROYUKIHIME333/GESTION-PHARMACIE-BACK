@@ -2,18 +2,14 @@ import { FastifyRequest, FastifyReply } from "fastify";
 import { ZodError } from "zod";
 import { registerSchema, loginSchema } from "./auth.schemas.js";
 import { registerUser, loginUser, getCurrentUser } from "./auth.services.js";
-import { ValidationError } from "../../lib/error.js";
+import { AppError } from "../../lib/error.js"; // Votre classe unique
 
 /**
- * AuthController handles business logic for authentication routes.
- * Keeping handlers in a class promotes cleaner separation of concerns
- * and easier dependency injection if needed later.
+ * AuthController centralise la logique HTTP pour les routes d'authentification.
+ * Utilise des méthodes fléchées pour éviter le .bind(this).
  */
 export class AuthController {
-  /**
-   * Register a new user
-   */
-  async register(request: FastifyRequest, reply: FastifyReply) {
+  register = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = registerSchema.parse(request.body);
       const result = await registerUser(data);
@@ -23,14 +19,11 @@ export class AuthController {
         data: result,
       });
     } catch (error) {
-      this.handleError(error);
+      throw this.formatError(error);
     }
-  }
+  };
 
-  /**
-   * Login user
-   */
-  async login(request: FastifyRequest, reply: FastifyReply) {
+  login = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = loginSchema.parse(request.body);
       const result = await loginUser(data);
@@ -40,34 +33,39 @@ export class AuthController {
         data: result,
       });
     } catch (error) {
-      this.handleError(error);
+      throw this.formatError(error);
     }
-  }
+  };
 
-  /**
-   * Get current authenticated user
-   */
-  async getMe(request: FastifyRequest, reply: FastifyReply) {
-    // Note: 'request.user' is populated by the 'requireAuth' preHandler
-    const user = await getCurrentUser((request as any).user.id);
+  getMe = async (request: FastifyRequest, reply: FastifyReply) => {
+    // Le type 'any' est temporaire ici si vous n'avez pas encore
+    // étendu le type global FastifyRequest
+    const userId = (request as any).user?.id;
+
+    if (!userId) {
+      throw AppError.unauthorized("Utilisateur non authentifié");
+    }
+
+    const user = await getCurrentUser(userId);
 
     return reply.status(200).send({
       success: true,
       data: { user },
     });
-  }
+  };
 
   /**
-   * Centralized error handling for the controller
+   * Transforme les erreurs (notamment Zod) en AppError
    */
-  private handleError(error: unknown): never {
+  private formatError(error: unknown): Error {
     if (error instanceof ZodError) {
-      throw new ValidationError("Données invalides", {
+      return AppError.validation("Données invalides", {
         issues: error.issues,
       });
     }
-    // Re-throw if it's not a validation error (e.g., DB error, Auth error)
-    throw error;
+    // Retourne l'erreur originale si elle est déjà une AppError
+    // ou une erreur système inattendue
+    return error as Error;
   }
 }
 

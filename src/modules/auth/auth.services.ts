@@ -1,12 +1,8 @@
 import { prisma } from "@/lib/prisma.js";
 import { hashPassword, verifyPassword, signJwt } from "@/lib/crypto.js";
-import {
-  NotFoundError,
-  UnauthorizedError,
-  ConflictError,
-} from "../../lib/error.js";
+import { AppError } from "../../lib/error.js"; // Votre classe unique
 import { RegisterInput, LoginInput } from "./auth.schemas.js";
-import { User, UserRole } from "../../prisma/generated/prisma/client.js";
+import { User } from "../../prisma/generated/prisma/client.js";
 
 export interface AuthResponse {
   user: Omit<User, "passwordHash">;
@@ -26,7 +22,7 @@ export async function registerUser(
   });
 
   if (existingUser) {
-    throw new ConflictError("Un utilisateur avec cet email existe déjà");
+    throw AppError.conflict("Un utilisateur avec cet email existe déjà");
   }
 
   if (input.employeeId) {
@@ -34,7 +30,7 @@ export async function registerUser(
       where: { employeeId: input.employeeId },
     });
     if (existingEmployee) {
-      throw new ConflictError("Un utilisateur avec ce matricule existe déjà");
+      throw AppError.conflict("Un utilisateur avec ce matricule existe déjà");
     }
   }
 
@@ -63,10 +59,7 @@ export async function registerUser(
     email: user.email,
   });
 
-  return {
-    user: sanitizeUser(user),
-    token,
-  };
+  return { user: sanitizeUser(user), token };
 }
 
 export async function loginUser(input: LoginInput): Promise<AuthResponse> {
@@ -76,17 +69,17 @@ export async function loginUser(input: LoginInput): Promise<AuthResponse> {
   });
 
   if (!user) {
-    throw new UnauthorizedError("Email ou mot de passe incorrect");
+    throw AppError.unauthorized("Email ou mot de passe incorrect");
   }
 
   if (!user.isActive) {
-    throw new UnauthorizedError(
+    throw AppError.unauthorized(
       "Compte désactivé. Contactez un administrateur."
     );
   }
 
   if (user.lockedUntil && user.lockedUntil > new Date()) {
-    throw new UnauthorizedError(
+    throw AppError.unauthorized(
       `Compte temporairement verrouillé. Réessayez après ${user.lockedUntil.toISOString()}`
     );
   }
@@ -97,7 +90,6 @@ export async function loginUser(input: LoginInput): Promise<AuthResponse> {
   );
 
   if (!isValidPassword) {
-    // Incrémenter le compteur d'échecs
     const newFailedCount = user.failedLoginCount + 1;
     const updates: { failedLoginCount: number; lockedUntil?: Date } = {
       failedLoginCount: newFailedCount,
@@ -109,22 +101,16 @@ export async function loginUser(input: LoginInput): Promise<AuthResponse> {
       updates.lockedUntil = lockUntil;
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: updates,
-    });
-
-    throw new UnauthorizedError("Email ou mot de passe incorrect");
+    await prisma.user.update({ where: { id: user.id }, data: updates });
+    throw AppError.unauthorized("Email ou mot de passe incorrect");
   }
 
-  // Réinitialiser les échecs et mettre à jour la dernière connexion
   const updatedUser = await prisma.user.update({
     where: { id: user.id },
     data: {
       failedLoginCount: 0,
       lockedUntil: null,
       lastLoginAt: new Date(),
-      lastLoginIp: null, // On n'a pas accès à l'IP ici, le plugin Fastify la fournira
     },
     include: { service: true },
   });
@@ -135,10 +121,7 @@ export async function loginUser(input: LoginInput): Promise<AuthResponse> {
     email: updatedUser.email,
   });
 
-  return {
-    user: sanitizeUser(updatedUser),
-    token,
-  };
+  return { user: sanitizeUser(updatedUser), token };
 }
 
 export async function getCurrentUser(
@@ -150,7 +133,7 @@ export async function getCurrentUser(
   });
 
   if (!user) {
-    throw new NotFoundError("Utilisateur", userId);
+    throw AppError.notFound("Utilisateur", userId);
   }
 
   return sanitizeUser(user);
