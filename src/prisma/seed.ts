@@ -4,13 +4,15 @@ import {
   DrugForm,
   DrugCategory,
   StorageCondition,
+  SupplierType,
+  MovementType,
 } from "../prisma/generated/prisma/client.js";
 import * as argon2 from "argon2";
 
 async function main() {
   console.log("🌱 Démarrage du seed...");
 
-  // ─── 1. Hôpital service par défaut (Pharmacie centrale) ───────────────────
+  // ─── 1. Hôpital service par défaut ─────────────────────────────────────────
   const pharmacyService = await prisma.hospitalService.upsert({
     where: { code: "PHARM" },
     update: {},
@@ -24,19 +26,20 @@ async function main() {
   });
   console.log(`✅ Service créé : ${pharmacyService.name}`);
 
-  // ─── 2. Utilisateur admin SUPERADMIN — argon2id ───────────────────────────
+  // ─── 2. Utilisateur admin SUPERADMIN ──────────────────────────────────────
   const adminPassword = await argon2.hash("AdminPharma2026!", {
     type: argon2.argon2id,
-    memoryCost: 65536, // 64 MiB
-    timeCost: 3, // 3 itérations
-    parallelism: 4, // 4 threads parallèles
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 4,
+    hashLength: 32,
   });
 
   const admin = await prisma.user.upsert({
-    where: { email: "firstAdmin@pharmacie.cd" },
+    where: { email: "admin@pharmacie.cd" },
     update: {},
     create: {
-      employeeId: "ADM-000",
+      employeeId: "ADM-001",
       firstName: "Administrateur",
       lastName: "Système",
       email: "admin@pharmacie.cd",
@@ -54,7 +57,65 @@ async function main() {
     `✅ Admin créé : ${admin.firstName} ${admin.lastName} (${admin.email})`
   );
 
-  // ─── 3. Médicaments de test (5 médicaments essentiels RDC) ────────────────
+  // ─── 3. Fournisseurs de test ──────────────────────────────────────────────
+  const suppliers = [
+    {
+      code: "SUP-001",
+      name: "PharmaRDC Distribution",
+      type: SupplierType.WHOLESALER,
+      contactPerson: "Jean Kabongo",
+      phone: "+243811111111",
+      email: "contact@pharmardc.cd",
+      address: "Avenue des Poids Lourds, Kinshasa",
+      city: "Kinshasa",
+      country: "RDC",
+      licenseNumber: "LIC-2024-001",
+      paymentTermsDays: 30,
+      currencyPreference: "USD",
+      isActive: true,
+    },
+    {
+      code: "SUP-002",
+      name: "OMS RDC",
+      type: SupplierType.NGO,
+      contactPerson: "Dr Marie Dupont",
+      phone: "+243822222222",
+      email: "kinshasa@oms.cd",
+      address: "Boulevard du 30 Juin",
+      city: "Kinshasa",
+      country: "RDC",
+      isActive: true,
+    },
+  ];
+
+  for (const supplierData of suppliers) {
+    const supplier = await prisma.supplier.upsert({
+      where: { code: supplierData.code },
+      update: {},
+      create: supplierData,
+    });
+    console.log(`✅ Fournisseur créé : ${supplier.name} (${supplier.code})`);
+  }
+
+  // ─── 4. Emplacements de stockage ──────────────────────────────────────────
+  const locations = [
+    { code: "GEN-A1", name: "Général Allée A Étagère 1", zone: "GENERAL" },
+    { code: "GEN-A2", name: "Général Allée A Étagère 2", zone: "GENERAL" },
+    { code: "FRIG-01", name: "Réfrigérateur Principal", zone: "REFRIGERE" },
+    { code: "STUP-01", name: "Armoire Stupéfiants", zone: "STUPEFIANT" },
+    { code: "QUAR-01", name: "Zone Quarantaine", zone: "QUARANTAINE" },
+  ];
+
+  for (const locData of locations) {
+    const location = await prisma.storageLocation.upsert({
+      where: { code: locData.code },
+      update: {},
+      create: { ...locData, isActive: true },
+    });
+    console.log(`✅ Emplacement créé : ${location.name} (${location.code})`);
+  }
+
+  // ─── 5. Médicaments de test ─────────────────────────────────────────────
   const drugs = [
     {
       code: "PARA-500",
@@ -211,7 +272,219 @@ async function main() {
     console.log(`✅ Médicament créé : ${drug.name} (${drug.code})`);
   }
 
-  // ─── 4. Configuration système ─────────────────────────────────────────────
+  // ─── 6. Lots de test ──────────────────────────────────────────────────────
+  const paraDrug = await prisma.drug.findUnique({
+    where: { code: "PARA-500" },
+  });
+  const amoxDrug = await prisma.drug.findUnique({
+    where: { code: "AMOX-500" },
+  });
+  const artDrug = await prisma.drug.findUnique({ where: { code: "ART-LUM" } });
+  const insuDrug = await prisma.drug.findUnique({
+    where: { code: "INSU-NPH" },
+  });
+  const morpDrug = await prisma.drug.findUnique({ where: { code: "MORP-10" } });
+  const supplier1 = await prisma.supplier.findUnique({
+    where: { code: "SUP-001" },
+  });
+  const genLocation = await prisma.storageLocation.findUnique({
+    where: { code: "GEN-A1" },
+  });
+  const frigLocation = await prisma.storageLocation.findUnique({
+    where: { code: "FRIG-01" },
+  });
+  const stupLocation = await prisma.storageLocation.findUnique({
+    where: { code: "STUP-01" },
+  });
+
+  if (paraDrug && supplier1 && genLocation) {
+    const batch = await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-PARA-001",
+          drugId: paraDrug.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-PARA-001",
+        drugId: paraDrug.id,
+        supplierId: supplier1.id,
+        initialQuantity: 500,
+        currentQuantity: 500,
+        expiryDate: new Date("2027-06-01"),
+        purchasePriceCDF: 2000.0,
+        purchasePriceUSD: 0.7,
+        locationId: genLocation.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log(`✅ Lot créé : ${batch.batchNumber} (${paraDrug.name})`);
+
+    await prisma.stockMovement.create({
+      data: {
+        batchId: batch.id,
+        type: MovementType.RECEPTION,
+        quantity: 500,
+        quantityBefore: 0,
+        quantityAfter: 500,
+        createdById: admin.id,
+        reason: "Réception initiale seed",
+      },
+    });
+  }
+
+  if (amoxDrug && supplier1 && genLocation) {
+    const batch = await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-AMOX-001",
+          drugId: amoxDrug.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-AMOX-001",
+        drugId: amoxDrug.id,
+        supplierId: supplier1.id,
+        initialQuantity: 400,
+        currentQuantity: 400,
+        expiryDate: new Date("2026-12-15"),
+        purchasePriceCDF: 2800.0,
+        purchasePriceUSD: 1.0,
+        locationId: genLocation.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log(`✅ Lot créé : ${batch.batchNumber} (${amoxDrug.name})`);
+
+    await prisma.stockMovement.create({
+      data: {
+        batchId: batch.id,
+        type: MovementType.RECEPTION,
+        quantity: 400,
+        quantityBefore: 0,
+        quantityAfter: 400,
+        createdById: admin.id,
+        reason: "Réception initiale seed",
+      },
+    });
+  }
+
+  if (artDrug && supplier1 && genLocation) {
+    const batch = await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: { batchNumber: "LOT-ART-001", drugId: artDrug.id },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-ART-001",
+        drugId: artDrug.id,
+        supplierId: supplier1.id,
+        initialQuantity: 1000,
+        currentQuantity: 1000,
+        expiryDate: new Date("2027-03-20"),
+        purchasePriceCDF: 4000.0,
+        purchasePriceUSD: 1.45,
+        locationId: genLocation.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log(`✅ Lot créé : ${batch.batchNumber} (${artDrug.name})`);
+
+    await prisma.stockMovement.create({
+      data: {
+        batchId: batch.id,
+        type: MovementType.RECEPTION,
+        quantity: 1000,
+        quantityBefore: 0,
+        quantityAfter: 1000,
+        createdById: admin.id,
+        reason: "Réception initiale seed",
+      },
+    });
+  }
+
+  if (insuDrug && frigLocation) {
+    const batch = await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-INSU-001",
+          drugId: insuDrug.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-INSU-001",
+        drugId: insuDrug.id,
+        supplierId: supplier1?.id,
+        initialQuantity: 100,
+        currentQuantity: 100,
+        expiryDate: new Date("2026-09-10"),
+        purchasePriceCDF: 12000.0,
+        purchasePriceUSD: 4.3,
+        locationId: frigLocation.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log(`✅ Lot créé : ${batch.batchNumber} (${insuDrug.name})`);
+
+    await prisma.stockMovement.create({
+      data: {
+        batchId: batch.id,
+        type: MovementType.RECEPTION,
+        quantity: 100,
+        quantityBefore: 0,
+        quantityAfter: 100,
+        createdById: admin.id,
+        reason: "Réception initiale seed",
+      },
+    });
+  }
+
+  if (morpDrug && stupLocation) {
+    const batch = await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-MORP-001",
+          drugId: morpDrug.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-MORP-001",
+        drugId: morpDrug.id,
+        supplierId: supplier1?.id,
+        initialQuantity: 50,
+        currentQuantity: 50,
+        expiryDate: new Date("2027-01-30"),
+        purchasePriceCDF: 20000.0,
+        purchasePriceUSD: 7.2,
+        locationId: stupLocation.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log(`✅ Lot créé : ${batch.batchNumber} (${morpDrug.name})`);
+
+    await prisma.stockMovement.create({
+      data: {
+        batchId: batch.id,
+        type: MovementType.RECEPTION,
+        quantity: 50,
+        quantityBefore: 0,
+        quantityAfter: 50,
+        createdById: admin.id,
+        reason: "Réception initiale seed",
+      },
+    });
+  }
+
+  // ─── 7. Configuration système ───────────────────────────────────────────────
   const configs = [
     {
       key: "hospital.name",
@@ -251,12 +524,12 @@ async function main() {
     {
       key: "session.accessTokenTtlMin",
       value: "15",
-      description: "Durée access token JWT (non utilisé en MVP - 24h fixe)",
+      description: "Durée access token JWT",
     },
     {
       key: "session.refreshTokenTtlDays",
       value: "30",
-      description: "Durée refresh token (non utilisé en MVP)",
+      description: "Durée refresh token",
     },
     {
       key: "prescription.validityDays",
