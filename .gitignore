@@ -30,3 +30,8 @@ yarn-error.log*
 .DS_Store
 *.log
 /src/generated/prisma
+
+# Brouillons et Tests
+brouillon.json
+brouillon.ts
+brouillon.txt
