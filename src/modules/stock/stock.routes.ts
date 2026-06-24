@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
 import { stockController } from "./stock.controller.js";
-import { requireAuth } from "../../plugins/auth.plugins.js";
+import { requireAuth } from "@/plugins/auth.plugins.js";
 
 export async function stockRoutes(
   fastify: FastifyInstance,
