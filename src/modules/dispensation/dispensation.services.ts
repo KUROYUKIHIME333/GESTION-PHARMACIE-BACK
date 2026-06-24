@@ -295,6 +295,17 @@ export async function createDispensation(
   // ─── 5. Transaction atomique ──────────────────────────────────────────────
   const dispensation = await prisma.$transaction(
     async (tx) => {
+      if (!input.prescriptionId) {
+        const allowWithoutRx = await tx.systemConfig.findUnique({
+          where: { key: "dispensation.allowWithoutRx" },
+        });
+
+        if (allowWithoutRx?.value === "false") {
+          throw AppError.validation(
+            "Dispensation sans ordonnance non autorisée"
+          );
+        }
+      }
       // Créer la dispensation
       const newDispensation = await tx.dispensation.create({
         data: {

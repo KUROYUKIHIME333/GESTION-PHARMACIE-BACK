@@ -135,10 +135,15 @@ export async function createBatch(
   }
 
   // Vérifier chaîne du froid si médicament le nécessite
-  if (drug.requiresColdChain && !input.coldChainVerified) {
-    throw AppError.validation(
-      "Ce médicament nécessite une vérification de la chaîne du froid"
-    );
+  if (drug.requiresColdChain) {
+    const tempMin = drug.minTemp ?? 2;
+    const tempMax = drug.maxTemp ?? 8;
+
+    if (!input.coldChainVerified) {
+      throw AppError.validation(
+        `Ce médicament nécessite une vérification de la chaîne du froid (${tempMin}°C - ${tempMax}°C)`
+      );
+    }
   }
 
   const batch = await prisma.$transaction(async (tx) => {

@@ -13,6 +13,8 @@ import { stockRoutes } from "@/modules/stock/stock.routes.js";
 import { patientRoutes } from "@/modules/patient/patient.routes.js";
 import { prescriptionRoutes } from "@/modules/prescription/prescription.routes.js";
 import { dispensationRoutes } from "@/modules/dispensation/dispensation.routes.js";
+import { alertRoutes } from "@/modules/alert/alert.routes.js";
+import { dashboardRoutes } from "@/modules/dashboard/dashboard.routes.js";
 import { AppError } from "./lib/error.js";
 import { ZodError } from "zod";
 
@@ -53,6 +55,8 @@ await app.register(stockRoutes, { prefix: "/api/stock" });
 await app.register(patientRoutes, { prefix: "/api/patients" });
 await app.register(prescriptionRoutes, { prefix: "/api/prescriptions" });
 await app.register(dispensationRoutes, { prefix: "/api/dispensations" });
+await app.register(alertRoutes, { prefix: "/api/alerts" });
+await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 
 // ─── Health check ────────────────────────────────────────────────────────────
 app.get("/health", async () => {

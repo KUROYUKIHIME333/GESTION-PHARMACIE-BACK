@@ -179,7 +179,10 @@ export async function createPrescription(
   }
 
   // Calculer la date de validité (3 jours par défaut)
-  const validityDays = 3;
+  const validityConfig = await prisma.systemConfig.findUnique({
+    where: { key: "prescription.validityDays" },
+  });
+  const validityDays = validityConfig ? parseInt(validityConfig.value, 10) : 3;
   const validUntil = new Date();
   validUntil.setDate(validUntil.getDate() + validityDays);
 
