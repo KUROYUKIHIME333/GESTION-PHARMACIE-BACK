@@ -4,7 +4,7 @@ import { getStockOverview, getStockByDrugId } from "./stock.services.js";
 import { AppError } from "../../lib/error.js";
 
 const paramsSchema = z.object({
-  drugId: z.string().uuid("ID de médicament invalide"),
+  drugId: z.string().cuid("ID de médicament invalide"),
 });
 
 export class StockController {
