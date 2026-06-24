@@ -12,6 +12,7 @@ import { batchRoutes } from "@/modules/batch/batch.routes.js";
 import { stockRoutes } from "@/modules/stock/stock.routes.js";
 import { patientRoutes } from "@/modules/patient/patient.routes.js";
 import { prescriptionRoutes } from "@/modules/prescription/prescription.routes.js";
+import { dispensationRoutes } from "@/modules/dispensation/dispensation.routes.js";
 import { AppError } from "./lib/error.js";
 import { ZodError } from "zod";
 
@@ -30,7 +31,6 @@ await app.register(cors, {
   origin: env.NODE_ENV === "development" ? true : env.API_URL,
   credentials: true,
 });
-
 await app.register(swagger, {
   openapi: {
     info: { title: "API Documentation", version: "1.0.0" },
@@ -42,21 +42,22 @@ await app.register(swagger, {
   },
 });
 await app.register(swaggerUi, { routePrefix: "/docs" });
-
 await app.register(authenticate);
 await app.register(rbac);
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
-app.get("/health", async () => {
-  return { status: "ok", timestamp: new Date().toISOString() };
-});
-
 await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(drugRoutes, { prefix: "/api/drugs" });
 await app.register(batchRoutes, { prefix: "/api/batches" });
 await app.register(stockRoutes, { prefix: "/api/stock" });
 await app.register(patientRoutes, { prefix: "/api/patients" });
 await app.register(prescriptionRoutes, { prefix: "/api/prescriptions" });
+await app.register(dispensationRoutes, { prefix: "/api/dispensations" });
+
+// ─── Health check ────────────────────────────────────────────────────────────
+app.get("/health", async () => {
+  return { status: "ok", timestamp: new Date().toISOString() };
+});
 
 // ─── Gestion des erreurs (Type-Safe) ─────────────────────────────────────────
 app.setErrorHandler(
