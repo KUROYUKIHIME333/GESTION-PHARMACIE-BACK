@@ -6,6 +6,8 @@ import {
   StorageCondition,
   SupplierType,
   MovementType,
+  Gender,
+  AllergySeverity,
 } from "../prisma/generated/prisma/client.js";
 import * as argon2 from "argon2";
 
@@ -575,6 +577,101 @@ async function main() {
     });
   }
   console.log(`✅ ${configs.length} configurations système créées`);
+
+  // ─── 8. Patients de test ──────────────────────────────────────────────────
+  const patients = [
+    {
+      hospitalNumber: "PAT-001",
+      firstName: "Jean",
+      lastName: "Mukendi",
+      dateOfBirth: new Date("1985-03-15"),
+      gender: Gender.MALE,
+      nationalId: "85-03-15-001",
+      phone: "+243811111111",
+      address: "Avenue Kasa-Vubu, Quartier Matonge",
+      commune: "Kalamu",
+      territoire: "Lukunga",
+      province: "Kinshasa",
+      isHivPatient: false,
+      isTbPatient: false,
+      chronicConditions: ["Hypertension artérielle"],
+      isActive: true,
+      notes: "Patient régulier - suivi HTA",
+    },
+    {
+      hospitalNumber: "PAT-002",
+      firstName: "Marie",
+      lastName: "Tshibola",
+      dateOfBirth: new Date("1992-07-22"),
+      gender: Gender.FEMALE,
+      nationalId: "92-07-22-002",
+      phone: "+243822222222",
+      address: "Boulevard Lumumba, Ngaba",
+      commune: "Ngaba",
+      territoire: "Mont-Amba",
+      province: "Kinshasa",
+      isHivPatient: true,
+      arvCode: "PNAME-2024-001",
+      isTbPatient: false,
+      chronicConditions: [],
+      isActive: true,
+      notes: "Patient VIH - programme ARV",
+    },
+    {
+      hospitalNumber: "PAT-003",
+      firstName: "Pierre",
+      lastName: "Kasongo",
+      dateOfBirth: new Date("1978-11-30"),
+      gender: Gender.MALE,
+      nationalId: "78-11-30-003",
+      phone: "+243833333333",
+      address: "Avenue de l'Université, Lemba",
+      commune: "Lemba",
+      territoire: "Mont-Amba",
+      province: "Kinshasa",
+      isHivPatient: false,
+      isTbPatient: true,
+      tbCode: "TB-2024-045",
+      chronicConditions: ["Diabète type 2"],
+      isActive: true,
+      notes: "Patient TB + Diabète - suivi PNT",
+    },
+  ];
+
+  for (const patientData of patients) {
+    const patient = await prisma.patient.upsert({
+      where: { hospitalNumber: patientData.hospitalNumber },
+      update: {},
+      create: patientData,
+    });
+    console.log(
+      `✅ Patient créé : ${patient.firstName} ${patient.lastName} (${patient.hospitalNumber})`
+    );
+  }
+
+  // Allergies de test
+  const jeanPatient = await prisma.patient.findUnique({
+    where: { hospitalNumber: "PAT-001" },
+  });
+  if (jeanPatient) {
+    await prisma.patientAllergy.upsert({
+      where: { id: "allergy-test-001" },
+      update: {},
+      create: {
+        id: "allergy-test-001",
+        patientId: jeanPatient.id,
+        substance: "Pénicilline",
+        reaction: "Urticaire généralisée, œdème des paupières",
+        severity: AllergySeverity.SEVERE,
+        confirmedAt: new Date("2024-01-15"),
+        confirmedBy: "Dr Kabongo",
+        notes: "Allergie confirmée - éviter tous les bêta-lactamines",
+      },
+    });
+    console.log(
+      `✅ Allergie créée pour ${jeanPatient.firstName} ${jeanPatient.lastName}`
+    );
+  }
 
   console.log("\n🎉 Seed terminé avec succès !");
   console.log("\n📋 Identifiants de connexion :");
