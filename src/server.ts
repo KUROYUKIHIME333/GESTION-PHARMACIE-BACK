@@ -10,6 +10,8 @@ import { authRoutes } from "@/modules/auth/auth.routes.js";
 import { drugRoutes } from "@/modules/drug/drug.routes.js";
 import { batchRoutes } from "@/modules/batch/batch.routes.js";
 import { stockRoutes } from "@/modules/stock/stock.routes.js";
+import { patientRoutes } from "@/modules/patient/patient.routes.js";
+import { prescriptionRoutes } from "@/modules/prescription/prescription.routes.js";
 import { AppError } from "./lib/error.js";
 import { ZodError } from "zod";
 
@@ -53,6 +55,8 @@ await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(drugRoutes, { prefix: "/api/drugs" });
 await app.register(batchRoutes, { prefix: "/api/batches" });
 await app.register(stockRoutes, { prefix: "/api/stock" });
+await app.register(patientRoutes, { prefix: "/api/patients" });
+await app.register(prescriptionRoutes, { prefix: "/api/prescriptions" });
 
 // ─── Gestion des erreurs (Type-Safe) ─────────────────────────────────────────
 app.setErrorHandler(
