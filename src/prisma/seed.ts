@@ -673,6 +673,50 @@ async function main() {
     );
   }
 
+  // ─── 9. Ordonnance de test ────────────────────────────────────────────────
+  const jeanPatientForRx = await prisma.patient.findUnique({
+    where: { hospitalNumber: "PAT-001" },
+  });
+  const paraDrugForRx = await prisma.drug.findUnique({
+    where: { code: "PARA-500" },
+  });
+  const adminForRx = await prisma.user.findUnique({
+    where: { email: "admin@pharmacie.cd" },
+  });
+
+  if (jeanPatientForRx && paraDrugForRx && adminForRx) {
+    const prescription = await prisma.prescription.create({
+      data: {
+        prescriptionNumber: "ORD-2026-000001",
+        patientId: jeanPatientForRx.id,
+        prescribedById: adminForRx.id,
+        isInpatient: false,
+        visitDate: new Date(),
+        validUntil: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        status: "PENDING",
+        diagnosisCode: "R50.9",
+        diagnosisLabel: "Fièvre, non spécifiée",
+      },
+    });
+
+    await prisma.prescriptionLine.create({
+      data: {
+        prescriptionId: prescription.id,
+        drugId: paraDrugForRx.id,
+        lineNumber: 1,
+        quantityPrescribed: 20,
+        dosage: "1 comprimé matin et soir pendant 10 jours",
+        frequency: "2 fois par jour",
+        durationDays: 10,
+        route: "orale",
+      },
+    });
+
+    console.log(
+      `✅ Ordonnance de test créée : ${prescription.prescriptionNumber}`
+    );
+  }
+
   console.log("\n🎉 Seed terminé avec succès !");
   console.log("\n📋 Identifiants de connexion :");
   console.log("   Email    : admin@pharmacie.cd");
