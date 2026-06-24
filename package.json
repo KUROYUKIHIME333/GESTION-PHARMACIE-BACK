@@ -8,11 +8,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
-    "db:generate": "prisma generate",
-    "db:seed": "prisma db seed",
-    "db:studio": "prisma studio"
+    "db:reinit": "prisma migrate reset --force",
+    "db:seed": "prisma db seed"
   },
   "repository": {
     "type": "git",

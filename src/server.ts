@@ -7,6 +7,11 @@ import { env } from "./lib/env.js";
 import { authenticate } from "./plugins/auth.plugins.js";
 import { rbac } from "./plugins/rbac.plugins.js";
 import { authRoutes } from "@/modules/auth/auth.routes.js";
+import { drugRoutes } from "@/modules/drug/drug.routes.js";
+import { batchRoutes } from "@/modules/batch/batch.routes.js";
+import { stockRoutes } from "@/modules/stock/stock.routes.js";
+import { patientRoutes } from "@/modules/patient/patient.routes.js";
+import { prescriptionRoutes } from "@/modules/prescription/prescription.routes.js";
 import { AppError } from "./lib/error.js";
 import { ZodError } from "zod";
 
@@ -47,6 +52,11 @@ app.get("/health", async () => {
 });
 
 await app.register(authRoutes, { prefix: "/api/auth" });
+await app.register(drugRoutes, { prefix: "/api/drugs" });
+await app.register(batchRoutes, { prefix: "/api/batches" });
+await app.register(stockRoutes, { prefix: "/api/stock" });
+await app.register(patientRoutes, { prefix: "/api/patients" });
+await app.register(prescriptionRoutes, { prefix: "/api/prescriptions" });
 
 // ─── Gestion des erreurs (Type-Safe) ─────────────────────────────────────────
 app.setErrorHandler(
@@ -124,9 +134,15 @@ const start = async () => {
     // Conversion explicite du port en nombre si nécessaire
     const port =
       typeof env.PORT === "string" ? parseInt(env.PORT, 10) : env.PORT;
+    app.log.info("|====================================================|");
+    app.log.info("|====================================================|");
     await app.listen({ port, host: "0.0.0.0" });
-    app.log.info(`🚀 Serveur : http://0.0.0.0:${port}`);
+    app.log.info(`Serveur : http://0.0.0.0:${port}`);
     app.log.info(`📖 Docs : http://0.0.0.0:${port}/docs`);
+    app.log.info("|====================================================|");
+    app.log.info("|====================================================|");
+    console.log("📋 Routes enregistrées:");
+    console.log(app.printRoutes());
   } catch (err) {
     app.log.error(err);
     process.exit(1);
