@@ -717,6 +717,166 @@ async function main() {
     );
   }
 
+  // ─── 10. Lots de test pour alertes ────────────────────────────────────────
+  const amoxDrugAlert = await prisma.drug.findUnique({
+    where: { code: "AMOX-500" },
+  });
+  // const artDrugAlert = await prisma.drug.findUnique({
+  //   where: { code: "ART-LUM" },
+  // });
+  const insuDrugAlert = await prisma.drug.findUnique({
+    where: { code: "INSU-NPH" },
+  });
+  const genLocationAlert = await prisma.storageLocation.findUnique({
+    where: { code: "GEN-A1" },
+  });
+  const frigLocationAlert = await prisma.storageLocation.findUnique({
+    where: { code: "FRIG-01" },
+  });
+
+  // Lot qui expire dans 15 jours (alerte critique péremption)
+  if (paraDrug && supplier1 && genLocationAlert) {
+    const expirySoon = new Date();
+    expirySoon.setDate(expirySoon.getDate() + 15);
+
+    await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-PARA-EXPIRE-15J",
+          drugId: paraDrug.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-PARA-EXPIRE-15J",
+        drugId: paraDrug.id,
+        supplierId: supplier1.id,
+        initialQuantity: 50,
+        currentQuantity: 50,
+        expiryDate: expirySoon,
+        purchasePriceCDF: 2000,
+        purchasePriceUSD: 0.7,
+        locationId: genLocationAlert.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log("✅ Lot péremption proche créé (15 jours)");
+  }
+
+  // Lot périmé (alerte EXPIRED)
+  if (amoxDrugAlert && supplier1 && genLocationAlert) {
+    const expired = new Date();
+    expired.setDate(expired.getDate() - 10);
+
+    await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-AMOX-PERIME",
+          drugId: amoxDrugAlert.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-AMOX-PERIME",
+        drugId: amoxDrugAlert.id,
+        supplierId: supplier1.id,
+        initialQuantity: 100,
+        currentQuantity: 100,
+        expiryDate: expired,
+        purchasePriceCDF: 2800,
+        purchasePriceUSD: 1.0,
+        locationId: genLocationAlert.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log("✅ Lot périmé créé");
+  }
+
+  // Lot chaîne du froid non vérifiée
+  if (insuDrugAlert && frigLocationAlert) {
+    await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-INSU-NO-COLD",
+          drugId: insuDrugAlert.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-INSU-NO-COLD",
+        drugId: insuDrugAlert.id,
+        supplierId: supplier1?.id,
+        initialQuantity: 30,
+        currentQuantity: 30,
+        expiryDate: new Date("2027-06-01"),
+        purchasePriceCDF: 12000,
+        purchasePriceUSD: 4.3,
+        locationId: frigLocationAlert.id,
+        coldChainVerified: false,
+        isActive: true,
+      },
+    });
+    console.log("✅ Lot chaîne du froid non vérifiée créé");
+  }
+
+  // Médicament avec stock critique (seuil haut, stock bas)
+  const lowStockDrug = await prisma.drug.upsert({
+    where: { code: "VIT-C" },
+    update: {},
+    create: {
+      code: "VIT-C",
+      name: "Vitamine C",
+      genericName: "Acide ascorbique",
+      dci: "ASCORBIC_ACID",
+      form: DrugForm.TABLET,
+      category: DrugCategory.VITAMINS_SUPPLEMENTS,
+      dosage: "500mg",
+      unitOfDispense: "comprimé",
+      packSize: 20,
+      packUnit: "boîte",
+      isEssential: true,
+      isControlled: false,
+      isProgramDrug: false,
+      storageConditions: [StorageCondition.ROOM_TEMP],
+      requiresColdChain: false,
+      unitPriceCDF: 1500,
+      unitPriceUSD: 0.5,
+      minStockLevel: 50,
+      criticalStockLevel: 20,
+      reorderPoint: 100,
+      reorderQuantity: 200,
+      isActive: true,
+    },
+  });
+
+  if (lowStockDrug && supplier1 && genLocationAlert) {
+    await prisma.batch.upsert({
+      where: {
+        batchNumber_drugId: {
+          batchNumber: "LOT-VITC-001",
+          drugId: lowStockDrug.id,
+        },
+      },
+      update: {},
+      create: {
+        batchNumber: "LOT-VITC-001",
+        drugId: lowStockDrug.id,
+        supplierId: supplier1.id,
+        initialQuantity: 15,
+        currentQuantity: 15,
+        expiryDate: new Date("2027-12-01"),
+        purchasePriceCDF: 1000,
+        purchasePriceUSD: 0.35,
+        locationId: genLocationAlert.id,
+        coldChainVerified: true,
+        isActive: true,
+      },
+    });
+    console.log("✅ Médicament stock critique créé (15 unités, seuil 20)");
+  }
+
   console.log("\n🎉 Seed terminé avec succès !");
   console.log("\n📋 Identifiants de connexion :");
   console.log("   Email    : admin@pharmacie.cd");
