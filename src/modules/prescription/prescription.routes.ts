@@ -1,14 +1,6 @@
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
-import { ZodError } from "zod";
-import {
-  prescriptionCreateSchema,
-  prescriptionLineCreateSchema,
-  prescriptionStatusUpdateSchema,
-  prescriptionQuerySchema,
-} from "./prescription.schemas.js";
 import { prescriptionController } from "./prescription.controller.js";
 import { requireAuth } from "@/plugins/auth.plugins.js";
-import { AppError } from "@/lib/error.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
 
 export async function prescriptionRoutes(
