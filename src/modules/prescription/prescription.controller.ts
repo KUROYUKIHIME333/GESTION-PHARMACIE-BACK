@@ -42,7 +42,7 @@ export class PrescriptionController {
   create = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const data = prescriptionCreateSchema.parse(request.body);
-      // Note: Cast temporaire comme convenu avant extension des types globaux
+      // WARNING: Caster temporaire comme convenu avant extension des types globaux
       const userId = (request as any).user.id;
       const prescription = await createPrescription(data, userId);
       return reply.status(201).send({ success: true, data: prescription });
