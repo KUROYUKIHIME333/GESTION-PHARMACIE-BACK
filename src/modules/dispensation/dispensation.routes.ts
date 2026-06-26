@@ -2,8 +2,48 @@ import { FastifyInstance, FastifyPluginOptions } from "fastify";
 import { dispensationController } from "./dispensation.controller.js";
 import { requireAuth } from "@/plugins/auth.plugins.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
+import { PaymentMethodValues } from "./dispensation.schemas.js";
 
 // --- Schémas réutilisables pour Swagger ---
+// Schéma pour une ligne de dispensation
+export const dispensationLineJsonSchema = {
+  type: "object",
+  required: ["drugId", "quantity"],
+  properties: {
+    prescriptionLineId: {
+      type: "string",
+      description: "CUID de la ligne d'ordonnance",
+    },
+    drugId: { type: "string", description: "CUID du médicament" },
+    quantity: { type: "integer", minimum: 1 },
+  },
+};
+
+// Schéma pour la création d'une dispensation
+export const dispensationCreateJsonSchema = {
+  type: "object",
+  required: ["patientId", "paymentMethod", "lines"],
+  properties: {
+    patientId: { type: "string" },
+    prescriptionId: { type: "string" },
+    paymentMethod: {
+      type: "string",
+      enum: PaymentMethodValues,
+    },
+    totalAmountCDF: { type: "number", minimum: 0 },
+    totalAmountUSD: { type: "number", minimum: 0 },
+    amountPaidCDF: { type: "number", minimum: 0 },
+    amountPaidUSD: { type: "number", minimum: 0 },
+    insuranceCoverage: { type: "number", minimum: 0 },
+    receiptNumber: { type: "string", maxLength: 50 },
+    lines: {
+      type: "array",
+      minItems: 1,
+      items: dispensationLineJsonSchema,
+    },
+    notes: { type: "string" },
+  },
+};
 
 const dispensationItemSchema = {
   type: "object",
