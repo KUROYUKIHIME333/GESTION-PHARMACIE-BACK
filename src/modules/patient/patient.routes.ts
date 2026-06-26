@@ -127,6 +127,25 @@ export async function patientRoutes(
     handler: patientController.list,
   });
 
+  // GET /api/patients/:id
+  fastify.get("/:id", {
+    schema: {
+      description: "Données d'un patients",
+      tags: ["Patients"],
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            success: { type: "boolean" },
+            data: patientItemSchema,
+          },
+        },
+      },
+    },
+    preHandler: [requireAuth],
+    handler: patientController.list,
+  });
+
   // POST /api/patients
   fastify.post("/", {
     schema: {
