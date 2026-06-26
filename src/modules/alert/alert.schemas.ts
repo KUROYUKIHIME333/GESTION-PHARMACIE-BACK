@@ -20,3 +20,8 @@ export const alertQuerySchema = z.object({
 
 export type AlertAcknowledgeInput = z.infer<typeof alertAcknowledgeSchema>;
 export type AlertQueryInput = z.infer<typeof alertQuerySchema>;
+export type AlertStatusType = typeof AlertStatus[keyof typeof AlertStatus];
+
+export const AlertStatusValues = Object.values(
+  AlertStatus
+) as readonly AlertStatusType[];

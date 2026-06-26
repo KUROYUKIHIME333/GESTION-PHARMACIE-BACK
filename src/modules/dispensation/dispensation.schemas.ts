@@ -36,3 +36,9 @@ export const dispensationQuerySchema = z.object({
 export type DispensationLineInput = z.infer<typeof dispensationLineInputSchema>;
 export type DispensationCreateInput = z.infer<typeof dispensationCreateSchema>;
 export type DispensationQueryInput = z.infer<typeof dispensationQuerySchema>;
+export type PaymentMethodType =
+  typeof PaymentMethod[keyof typeof PaymentMethod];
+
+export const PaymentMethodValues = Object.values(
+  PaymentMethod
+) as readonly PaymentMethodType[];

@@ -63,3 +63,18 @@ export const drugQuerySchema = z.object({
 export type DrugCreateInput = z.infer<typeof drugCreateSchema>;
 export type DrugUpdateInput = z.infer<typeof drugUpdateSchema>;
 export type DrugQueryInput = z.infer<typeof drugQuerySchema>;
+export type DrugFormType = typeof DrugForm[keyof typeof DrugForm];
+export type DrugCategoryType = typeof DrugCategory[keyof typeof DrugCategory];
+export type StorageConditionType =
+  typeof StorageCondition[keyof typeof StorageCondition];
+
+// On définit le tableau avec ce type précis
+export const DrugFormValues = Object.values(
+  DrugForm
+) as readonly DrugFormType[];
+export const DrugCategoryValues = Object.values(
+  DrugCategory
+) as readonly DrugCategoryType[];
+export const StorageConditionValues = Object.values(
+  StorageCondition
+) as readonly StorageConditionType[];
