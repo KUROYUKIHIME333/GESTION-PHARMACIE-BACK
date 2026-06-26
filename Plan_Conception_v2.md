@@ -352,7 +352,7 @@ CREATE TRIGGER trg_stock_movement_immutable
 3. Le lot doit avoir assez de stock (`currentQuantity >= quantityDemandée`)
 4. Les allergies du patient doivent être vérifiées (`allergyCheckDone = true` obligatoire)
 5. Si le Drug est contrôlé (`isControlled = true`), une entrée `ControlledDrugEntry` est créée automatiquement
-6. La sélection du lot suit FEFO : lot avec `expiryDate` la plus proche en premier
+6. La sélection du lot suit FEFO (First Expired, First Out ou « premier expiré, premier sorti ») : lot avec `expiryDate` la plus proche en premier. C'est une stratégie de gestion des stocks qui priorise la dispensation des produits périssables (médicaments, aliments) ayant la date de péremption la plus proche, indépendamment de leur date d'arrivée
 
 **Flux de statut Prescription :**
 ```
