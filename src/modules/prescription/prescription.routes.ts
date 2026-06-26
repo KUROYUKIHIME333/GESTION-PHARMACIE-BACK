@@ -2,11 +2,53 @@ import { FastifyInstance, FastifyPluginOptions } from "fastify";
 import { prescriptionController } from "./prescription.controller.js";
 import { requireAuth } from "@/plugins/auth.plugins.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
-import {
-  prescriptionCreateSchema,
-  prescriptionLineCreateSchema,
-  prescriptionStatusUpdateSchema,
-} from "./prescription.schemas.js";
+
+const prescriptionCreateSchema = {
+  type: "object",
+  required: ["patientId"],
+  properties: {
+    patientId: { type: "string", description: "CUID du patient" },
+    prescribedById: { type: "string", description: "CUID du prescripteur" },
+    serviceId: { type: "string", description: "CUID du service" },
+    isInpatient: { type: "boolean", default: false },
+    admissionRef: { type: "string", maxLength: 100 },
+    diagnosisCode: { type: "string", maxLength: 50 },
+    diagnosisLabel: { type: "string", maxLength: 255 },
+    notes: { type: "string" },
+  },
+};
+
+const prescriptionStatusUpdateSchema = {
+  type: "object",
+  required: ["status"],
+  properties: {
+    status: {
+      type: "string",
+      enum: [
+        "DRAFT",
+        "PENDING",
+        "PARTIALLY_DISPENSED",
+        "DISPENSED",
+        "CANCELLED",
+        "EXPIRED",
+      ],
+    },
+  },
+};
+
+const prescriptionLineCreateSchema = {
+  type: "object",
+  required: ["drugId", "quantityPrescribed", "dosage"],
+  properties: {
+    drugId: { type: "string" },
+    quantityPrescribed: { type: "integer", minimum: 1 },
+    dosage: { type: "string", minLength: 1, maxLength: 500 },
+    frequency: { type: "string", maxLength: 100 },
+    durationDays: { type: "integer", minimum: 1 },
+    route: { type: "string", maxLength: 50 },
+    instructions: { type: "string" },
+  },
+};
 
 export async function prescriptionRoutes(
   fastify: FastifyInstance,
