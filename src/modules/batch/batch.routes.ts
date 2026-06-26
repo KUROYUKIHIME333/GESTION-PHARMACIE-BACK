@@ -5,6 +5,35 @@ import { UserRole } from "@/prisma/generated/prisma/client.js";
 
 // --- Schémas réutilisables ---
 
+// Schéma pour la création d'un lot (utilisé dans body)
+const batchCreateJsonSchema = {
+  type: "object",
+  required: ["batchNumber", "drugId", "initialQuantity", "expiryDate"],
+  properties: {
+    batchNumber: { type: "string", maxLength: 100 },
+    drugId: { type: "string", description: "CUID du médicament" },
+    supplierId: { type: "string", description: "CUID du fournisseur" },
+    initialQuantity: { type: "integer", minimum: 1 },
+    expiryDate: { type: "string", format: "date-time" },
+    manufacturingDate: { type: "string", format: "date-time" },
+    purchasePriceCDF: { type: "number", minimum: 0 },
+    purchasePriceUSD: { type: "number", minimum: 0 },
+    locationId: { type: "string", description: "CUID de l'emplacement" },
+    coldChainVerified: { type: "boolean", default: false },
+    notes: { type: "string" },
+  },
+};
+
+// Schéma pour la gestion de la quarantaine (utilisé dans body)
+const batchQuarantineJsonSchema = {
+  type: "object",
+  required: ["isQuarantined"],
+  properties: {
+    isQuarantined: { type: "boolean" },
+    quarantineReason: { type: "string", minLength: 1 },
+  },
+};
+
 const batchItemSchema = {
   type: "object",
   properties: {
@@ -78,6 +107,7 @@ export async function batchRoutes(
     schema: {
       description: "Créer un nouveau lot",
       tags: ["Batches"],
+      body: batchCreateJsonSchema,
       response: {
         201: {
           type: "object",
@@ -135,6 +165,7 @@ export async function batchRoutes(
     schema: {
       description: "Modifier le statut de quarantaine d'un lot",
       tags: ["Batches"],
+      body: batchQuarantineJsonSchema,
       response: {
         200: {
           type: "object",
