@@ -28,6 +28,14 @@ export class AuthController {
       const data = loginSchema.parse(request.body);
       const result = await loginUser(data);
 
+      reply.setCookie("token", result.token, {
+        path: "/", // Accessible sur tout le site
+        httpOnly: true, // Empêche l'accès au cookie via JavaScript (XSS)
+        secure: true, // Nécessite HTTPS (mettez false en dev local)
+        sameSite: "lax", // Protection contre CSRF
+        maxAge: 60 * 60 * 24, // Expiration (ex: 7 jours en secondes)
+      });
+
       return reply.status(200).send({
         success: true,
         data: result,
