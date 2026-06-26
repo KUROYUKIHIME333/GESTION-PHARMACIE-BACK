@@ -61,3 +61,11 @@ export type PatientCreateInput = z.infer<typeof patientCreateSchema>;
 export type PatientUpdateInput = z.infer<typeof patientUpdateSchema>;
 export type PatientQueryInput = z.infer<typeof patientQuerySchema>;
 export type AllergyCreateInput = z.infer<typeof allergyCreateSchema>;
+export type AllergySeverityType =
+  typeof AllergySeverity[keyof typeof AllergySeverity];
+export type GenderType = typeof Gender[keyof typeof Gender];
+
+export const AllergySeverityValues = Object.values(
+  AllergySeverity
+) as readonly AllergySeverityType[];
+export const GenderValues = Object.values(Gender) as readonly GenderType[];

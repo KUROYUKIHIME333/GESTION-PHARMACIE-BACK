@@ -1,7 +1,8 @@
 import { FastifyInstance, FastifyPluginOptions } from "fastify";
 import { patientController } from "./patient.controller.js";
 import { requireAuth } from "@/plugins/auth.plugins.js";
-import { UserRole } from "@/prisma/generated/prisma/client.js";
+import { AllergySeverity, UserRole } from "@/prisma/generated/prisma/client.js";
+import { GenderValues } from "./patient.schemas.js";
 
 // --- Schémas JSON pour Swagger ---
 // Schéma de création d'un patient
@@ -13,7 +14,7 @@ export const patientCreateSchema = {
     firstName: { type: "string", maxLength: 100 },
     lastName: { type: "string", maxLength: 100 },
     dateOfBirth: { type: "string", format: "date-time" },
-    gender: { type: "string", enum: ["MALE", "FEMALE", "UNKNOWN"] },
+    gender: { type: "string", enum: GenderValues },
     nationalId: { type: "string", maxLength: 50 },
     phone: { type: "string", maxLength: 20 },
     address: { type: "string" },
@@ -45,7 +46,7 @@ export const allergyCreateSchema = {
   properties: {
     substance: { type: "string", maxLength: 255 },
     reaction: { type: "string" },
-    severity: { type: "string", enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    severity: { type: "string", enum: AllergySeverity },
     confirmedAt: { type: "string", format: "date-time" },
     confirmedBy: { type: "string", maxLength: 100 },
     notes: { type: "string" },
