@@ -4,6 +4,53 @@ import { requireAuth } from "@/plugins/auth.plugins.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
 
 // --- Schémas JSON pour Swagger ---
+// Schéma de création d'un patient
+export const patientCreateSchema = {
+  type: "object",
+  required: ["hospitalNumber", "firstName", "lastName"],
+  properties: {
+    hospitalNumber: { type: "string", maxLength: 50 },
+    firstName: { type: "string", maxLength: 100 },
+    lastName: { type: "string", maxLength: 100 },
+    dateOfBirth: { type: "string", format: "date-time" },
+    gender: { type: "string", enum: ["MALE", "FEMALE", "UNKNOWN"] },
+    nationalId: { type: "string", maxLength: 50 },
+    phone: { type: "string", maxLength: 20 },
+    address: { type: "string" },
+    commune: { type: "string", maxLength: 100 },
+    territoire: { type: "string", maxLength: 100 },
+    province: { type: "string", maxLength: 100 },
+    insuranceId: { type: "string" },
+    ongCoverageRef: { type: "string", maxLength: 100 },
+    isHivPatient: { type: "boolean" },
+    arvCode: { type: "string", maxLength: 50 },
+    isTbPatient: { type: "boolean" },
+    tbCode: { type: "string", maxLength: 50 },
+    chronicConditions: { type: "array", items: { type: "string" } },
+    isActive: { type: "boolean" },
+    notes: { type: "string" },
+  },
+};
+
+// Schéma de mise à jour (tous les champs optionnels)
+export const patientUpdateSchema = {
+  ...patientCreateSchema,
+  required: [], // Aucun champ requis pour une mise à jour partielle
+};
+
+// Schéma pour les allergie
+export const allergyCreateSchema = {
+  type: "object",
+  required: ["substance", "severity"],
+  properties: {
+    substance: { type: "string", maxLength: 255 },
+    reaction: { type: "string" },
+    severity: { type: "string", enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    confirmedAt: { type: "string", format: "date-time" },
+    confirmedBy: { type: "string", maxLength: 100 },
+    notes: { type: "string" },
+  },
+};
 
 const patientItemSchema = {
   type: "object",
@@ -84,7 +131,37 @@ export async function patientRoutes(
     schema: {
       description: "Créer un nouveau patient",
       tags: ["Patients"],
-      // Note: Vous pouvez ajouter ici votre patientCreateSchema en 'body'
+      body: patientCreateSchema,
+      response: {
+        201: {
+          type: "object",
+          properties: {
+            success: { type: "boolean" },
+            data: patientItemSchema,
+          },
+        },
+        400: errorResponse,
+        409: errorResponse,
+      },
+    },
+    preHandler: [
+      requireAuth,
+      fastify.requireRole(
+        UserRole.SUPERADMIN,
+        UserRole.PHARMACIST,
+        UserRole.DOCTOR,
+        UserRole.NURSE
+      ),
+    ],
+    handler: patientController.create,
+  });
+
+  // PUT /api/patients
+  fastify.put("/:id", {
+    schema: {
+      description: "Modifier un patient existant",
+      tags: ["Patients"],
+      body: patientUpdateSchema,
       response: {
         201: {
           type: "object",
@@ -135,6 +212,7 @@ export async function patientRoutes(
       description: "Ajouter une allergie à un patient",
       tags: ["Patients"],
       params: { type: "object", properties: { id: { type: "string" } } },
+      body: allergyCreateSchema,
       response: {
         201: {
           type: "object",
