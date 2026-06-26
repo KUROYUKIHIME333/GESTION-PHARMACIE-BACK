@@ -2,8 +2,73 @@ import { FastifyInstance, FastifyPluginOptions } from "fastify";
 import { drugController } from "./drug.controller.js";
 import { requireAuth } from "../../plugins/auth.plugins.js";
 import { UserRole } from "@/prisma/generated/prisma/client.js";
+import {
+  DrugFormValues,
+  DrugCategoryValues,
+  StorageConditionValues,
+} from "./drug.schemas.js";
 
 // --- Schémas réutilisables ---
+
+export const drugCreateJsonSchema = {
+  type: "object",
+  required: [
+    "code",
+    "name",
+    "dci",
+    "form",
+    "category",
+    "dosage",
+    "unitOfDispense",
+  ],
+  properties: {
+    code: { type: "string", maxLength: 50 },
+    name: { type: "string", maxLength: 255 },
+    genericName: { type: "string", maxLength: 255 },
+    dci: { type: "string", maxLength: 255 },
+    form: {
+      type: "string",
+      enum: DrugFormValues, // À mettre à jour selon DrugForm
+    },
+    category: {
+      type: "string",
+      enum: DrugCategoryValues, // À mettre à jour selon DrugCategory
+    },
+    therapeuticClass: { type: "string", maxLength: 255 },
+    dosage: { type: "string", maxLength: 100 },
+    concentration: { type: "string", maxLength: 100 },
+    unitOfDispense: { type: "string", maxLength: 50 },
+    packSize: { type: "integer", minimum: 1, default: 1 },
+    packUnit: { type: "string", maxLength: 50, default: "boîte" },
+    ammNumber: { type: "string", maxLength: 100 },
+    isEssential: { type: "boolean", default: false },
+    isControlled: { type: "boolean", default: false },
+    controlledSchedule: { type: "string", maxLength: 10 },
+    isProgramDrug: { type: "boolean", default: false },
+    programName: { type: "string", maxLength: 100 },
+    storageConditions: {
+      type: "array",
+      items: { type: "string", enum: StorageConditionValues }, // À mettre à jour selon StorageCondition
+    },
+    requiresColdChain: { type: "boolean", default: false },
+    minTemp: { type: "number" },
+    maxTemp: { type: "number" },
+    unitPriceCDF: { type: "number", minimum: 0 },
+    unitPriceUSD: { type: "number", minimum: 0 },
+    isPriceRegulated: { type: "boolean", default: false },
+    minStockLevel: { type: "integer", minimum: 0, default: 0 },
+    criticalStockLevel: { type: "integer", minimum: 0, default: 0 },
+    reorderPoint: { type: "integer", minimum: 0, default: 0 },
+    reorderQuantity: { type: "integer", minimum: 0, default: 0 },
+    isActive: { type: "boolean", default: true },
+    notes: { type: "string" },
+  },
+};
+
+export const drugUpdateJsonSchema = {
+  ...drugCreateJsonSchema,
+  required: [],
+};
 
 const drugItemSchema = {
   type: "object",
@@ -75,6 +140,7 @@ export async function drugRoutes(
     schema: {
       description: "Créer un nouveau médicament",
       tags: ["Drugs"],
+      body: drugCreateJsonSchema,
       response: {
         201: {
           type: "object",
@@ -125,6 +191,7 @@ export async function drugRoutes(
       description: "Modifier un médicament",
       tags: ["Drugs"],
       params: { type: "object", properties: { id: { type: "string" } } },
+      body: drugUpdateJsonSchema,
       response: {
         200: {
           type: "object",
