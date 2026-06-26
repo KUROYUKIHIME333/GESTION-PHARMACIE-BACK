@@ -6,7 +6,7 @@ import { PaymentMethodValues } from "./dispensation.schemas.js";
 
 // --- Schémas réutilisables pour Swagger ---
 // Schéma pour une ligne de dispensation
-export const dispensationLineJsonSchema = {
+const dispensationLineJsonSchema = {
   type: "object",
   required: ["drugId", "quantity"],
   properties: {
@@ -20,7 +20,7 @@ export const dispensationLineJsonSchema = {
 };
 
 // Schéma pour la création d'une dispensation
-export const dispensationCreateJsonSchema = {
+const dispensationCreateJsonSchema = {
   type: "object",
   required: ["patientId", "paymentMethod", "lines"],
   properties: {
@@ -156,6 +156,7 @@ export async function dispensationRoutes(
     schema: {
       description: "Créer une nouvelle dispensation",
       tags: ["Dispensations"],
+      body: dispensationCreateJsonSchema,
       response: {
         201: {
           type: "object",

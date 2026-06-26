@@ -214,4 +214,33 @@ export async function drugRoutes(
     ],
     handler: drugController.update,
   });
+
+  // DELETE /api/drugs/:id
+  fastify.delete("/:id", {
+    schema: {
+      description: "Supprimer un médicament",
+      tags: ["Drugs"],
+      params: { type: "object", properties: { id: { type: "string" } } },
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            success: { type: "boolean" },
+            message: { type: "string" },
+          },
+        },
+        400: errorResponseSchema,
+        404: errorResponseSchema,
+      },
+    },
+    preHandler: [
+      requireAuth,
+      fastify.requireRole(
+        UserRole.SUPERADMIN,
+        UserRole.PHARMACIST,
+        UserRole.STOCK_MANAGER
+      ),
+    ],
+    handler: drugController.update,
+  });
 }
