@@ -10,6 +10,11 @@ import { authRoutes } from "@/modules/auth/auth.routes.js";
 import { drugRoutes } from "@/modules/drug/drug.routes.js";
 import { batchRoutes } from "@/modules/batch/batch.routes.js";
 import { stockRoutes } from "@/modules/stock/stock.routes.js";
+import { patientRoutes } from "@/modules/patient/patient.routes.js";
+import { prescriptionRoutes } from "@/modules/prescription/prescription.routes.js";
+import { dispensationRoutes } from "@/modules/dispensation/dispensation.routes.js";
+import { alertRoutes } from "@/modules/alert/alert.routes.js";
+import { dashboardRoutes } from "@/modules/dashboard/dashboard.routes.js";
 import { AppError } from "./lib/error.js";
 import { ZodError } from "zod";
 
@@ -28,7 +33,6 @@ await app.register(cors, {
   origin: env.NODE_ENV === "development" ? true : env.API_URL,
   credentials: true,
 });
-
 await app.register(swagger, {
   openapi: {
     info: { title: "API Documentation", version: "1.0.0" },
@@ -40,19 +44,24 @@ await app.register(swagger, {
   },
 });
 await app.register(swaggerUi, { routePrefix: "/docs" });
-
 await app.register(authenticate);
 await app.register(rbac);
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
-app.get("/health", async () => {
-  return { status: "ok", timestamp: new Date().toISOString() };
-});
-
 await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(drugRoutes, { prefix: "/api/drugs" });
 await app.register(batchRoutes, { prefix: "/api/batches" });
 await app.register(stockRoutes, { prefix: "/api/stock" });
+await app.register(patientRoutes, { prefix: "/api/patients" });
+await app.register(prescriptionRoutes, { prefix: "/api/prescriptions" });
+await app.register(dispensationRoutes, { prefix: "/api/dispensations" });
+await app.register(alertRoutes, { prefix: "/api/alerts" });
+await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
+
+// ─── Health check ────────────────────────────────────────────────────────────
+app.get("/health", async () => {
+  return { status: "ok", timestamp: new Date().toISOString() };
+});
 
 // ─── Gestion des erreurs (Type-Safe) ─────────────────────────────────────────
 app.setErrorHandler(

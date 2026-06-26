@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma.js";
 import { AppError } from "../../lib/error.js";
-// import { NotFoundError } from "@/lib/errors.js";
 import { Prisma } from "@/prisma/generated/prisma/client.js";
 
 export interface StockItem {
