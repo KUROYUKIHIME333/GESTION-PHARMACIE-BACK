@@ -1,6 +1,7 @@
 import "dotenv/config";
 import fastify, { FastifyRequest, FastifyReply } from "fastify";
 import cors from "@fastify/cors";
+import fastifyCookie from "@fastify/cookie";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { env } from "./lib/env.js";
@@ -32,6 +33,10 @@ const app = fastify({
 await app.register(cors, {
   origin: env.NODE_ENV === "development" ? true : env.API_URL,
   credentials: true,
+});
+await app.register(fastifyCookie, {
+  secret: env.COOKIE_SECRET, // optionnel, pour la sécurité
+  hook: "onRequest", // par défaut
 });
 await app.register(swagger, {
   openapi: {
