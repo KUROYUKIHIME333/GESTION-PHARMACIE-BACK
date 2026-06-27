@@ -6,6 +6,7 @@ const envSchema = z.object({
     .string()
     .min(64, "JWT_SECRET doit contenir au moins 64 caractères"),
   JWT_EXPIRES_IN: z.string().default("24h"),
+  COOKIE_SECRET: z.string(),
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
