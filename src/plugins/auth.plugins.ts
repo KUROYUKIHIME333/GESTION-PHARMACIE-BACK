@@ -1,4 +1,4 @@
-import { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
+import { FastifyPluginAsync, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { verifyJwt } from "@/lib/crypto.js";
 import { AppError } from "../lib/error.js"; // Votre classe unique
