@@ -97,7 +97,7 @@ export async function authRoutes(
         401: {
           type: "object",
           properties: {
-            success: { type: "boolean" },
+            success: { type: "boolean", default: false },
             message: { type: "string" },
           },
         },
