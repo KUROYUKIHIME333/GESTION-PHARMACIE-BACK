@@ -2798,7 +2798,8 @@ export const SessionScalarFieldEnum = {
   ipAddress: 'ipAddress',
   expiresAt: 'expiresAt',
   revokedAt: 'revokedAt',
-  createdAt: 'createdAt'
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 } as const
 
 export type SessionScalarFieldEnum = (typeof SessionScalarFieldEnum)[keyof typeof SessionScalarFieldEnum]

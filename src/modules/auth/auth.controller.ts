@@ -1,8 +1,14 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { ZodError } from "zod";
 import { registerSchema, loginSchema } from "./auth.schemas.js";
-import { registerUser, loginUser, getCurrentUser } from "./auth.services.js";
+import {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getCurrentUser,
+} from "./auth.services.js";
 import { AppError } from "../../lib/error.js"; // Votre classe unique
+import { getUserConnected } from "@/plugins/auth.plugins.js";
 
 /**
  * AuthController centralise la logique HTTP pour les routes d'authentification.
@@ -25,8 +31,11 @@ export class AuthController {
 
   login = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
+      const userAgent = request.headers["user-agent"];
+      const ipAddress = request.ip;
       const data = loginSchema.parse(request.body);
-      const result = await loginUser(data);
+
+      const result = await loginUser(data, { userAgent, ipAddress });
 
       const { token, ...reste } = result;
 
@@ -63,6 +72,34 @@ export class AuthController {
       success: true,
       data: { user },
     });
+  };
+
+  // --- Dans auth.controller.ts ---
+
+  logout = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = getUserConnected(request);
+
+      if (user) {
+        // Suppression en base
+        await logoutUser(user.id, request.ip);
+      }
+
+      // Suppression du cookie côté client
+      reply.clearCookie("token", {
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        partitioned: true,
+      });
+
+      return reply
+        .status(200)
+        .send({ success: true, message: "Déconnecté avec succès" });
+    } catch (error) {
+      throw this.formatError(error);
+    }
   };
 
   /**

@@ -6,6 +6,7 @@
 datasource db {
   provider = "postgresql"
 }
+
 generator client {
   provider = "prisma-client"
   output   = "generated/prisma"
@@ -326,18 +327,20 @@ model User {
 model Session {
   id        String    @id @default(cuid())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId    String
+  userId    String    @unique
   /// Hash du refresh token (SHA-256) — le token brut n'est jamais stocké.
   tokenHash String    @unique
   /// Device/navigateur pour l'UI de gestion des sessions.
   userAgent String?
-  ipAddress String?
+  ipAddress String?    @unique
   expiresAt DateTime
   /// Invalide la session sans la supprimer (pour audit).
   revokedAt DateTime?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  @@unique([userId, ipAddress])
   @@index([userId])
   @@index([expiresAt])
   @@map("sessions")
