@@ -1,11 +1,17 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { ZodError } from "zod";
-import { registerSchema, loginSchema } from "./auth.schemas.js";
+import {
+  registerSchema,
+  loginSchema,
+  changePasswordSchema,
+  ChangePasswordInput,
+} from "./auth.schemas.js";
 import {
   registerUser,
   loginUser,
   logoutUser,
   getCurrentUser,
+  changeMyPasssword,
 } from "./auth.services.js";
 import { AppError } from "../../lib/error.js"; // Votre classe unique
 import { getUserConnected } from "@/plugins/auth.plugins.js";
@@ -74,8 +80,6 @@ export class AuthController {
     });
   };
 
-  // --- Dans auth.controller.ts ---
-
   logout = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = getUserConnected(request);
@@ -97,6 +101,38 @@ export class AuthController {
       return reply
         .status(200)
         .send({ success: true, message: "Déconnecté avec succès" });
+    } catch (error) {
+      throw this.formatError(error);
+    }
+  };
+
+  changePassword = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const user = getUserConnected(request);
+
+      if (!user) throw AppError.unauthorized("Non authentifié");
+
+      const passwords = changePasswordSchema.parse(request.body);
+
+      const datas: ChangePasswordInput = {
+        userId: user.id,
+        oldPassword: passwords.oldPassword,
+        newPassword: passwords.newPassword,
+      };
+
+      await changeMyPasssword(datas);
+
+      reply.clearCookie("token", {
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
+        partitioned: true,
+      });
+
+      return reply
+        .status(200)
+        .send({ success: true, message: "Mot de passe modifié avec succès" });
     } catch (error) {
       throw this.formatError(error);
     }
