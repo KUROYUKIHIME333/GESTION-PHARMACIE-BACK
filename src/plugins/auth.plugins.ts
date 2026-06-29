@@ -1,6 +1,6 @@
 import { FastifyPluginAsync, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { verifyJwt } from "@/lib/crypto.js";
+import { verifyJwt, hashPassword } from "@/lib/crypto.js";
 import { AppError } from "../lib/error.js";
 import { prisma } from "@/lib/prisma.js";
 import { User } from "../prisma/generated/prisma/client.js";
@@ -19,7 +19,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     // Récupération depuis le cookie (nommez votre cookie comme configuré dans votre auth controller)
     const token = request.cookies["token"];
 
-    console.log("Le token du ops: ", token)
+    // console.log("Le token du ops: ", token)
 
     if (!token) {
       return; // On ne throw pas ici pour permettre des routes publiques
@@ -27,6 +27,22 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
     try {
       const decoded = verifyJwt(token);
+
+      const session = await prisma.session.findUnique({
+        where: {
+          userId_ipAddress: {
+            userId: decoded.userId,
+            ipAddress: request.ip,
+          },
+        },
+      });
+
+      if (!session) return;
+
+      const isTokenValid = (await hashPassword(token)) === session.tokenHash;
+
+      if (!isTokenValid) return;
+
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         include: { service: true },
@@ -41,7 +57,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       }
     } catch (err) {
       // On ignore les erreurs de token ici pour que request.user reste undefined
-      // C'est le rôle de requireAuth de throw si l'accès est refusé.
+      // C'est le rôle de requireAuth de throw error si l'accès est refusé.
     }
   });
 };
@@ -53,4 +69,8 @@ export async function requireAuth(request: FastifyRequest): Promise<void> {
   if (!request.user) {
     throw AppError.unauthorized("Authentification requise ou session expirée");
   }
+}
+
+export function getUserConnected(request: FastifyRequest): User | undefined {
+  return request.user;
 }
