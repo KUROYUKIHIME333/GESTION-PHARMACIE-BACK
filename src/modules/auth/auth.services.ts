@@ -6,7 +6,12 @@ import {
   verifyJwt,
 } from "@/lib/crypto.js";
 import { AppError } from "../../lib/error.js"; // Votre classe unique
-import { RegisterInput, LoginInput, DeviceDataInput } from "./auth.schemas.js";
+import {
+  RegisterInput,
+  LoginInput,
+  DeviceDataInput,
+  ChangePasswordInput,
+} from "./auth.schemas.js";
 import { User } from "../../prisma/generated/prisma/client.js";
 
 export interface AuthResponse {
@@ -171,6 +176,42 @@ export async function logoutUser(
       ipAddress,
     },
   });
+}
+
+export async function changeMyPasssword({
+  userId,
+  oldPassword,
+  newPassword,
+}: ChangePasswordInput) {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+  });
+
+  if (!user) throw AppError.notFound("Utilisateur", userId);
+
+  const oldPasswordMatch = await verifyPassword(oldPassword, user.passwordHash);
+
+  if (!oldPasswordMatch)
+    throw AppError.unauthorized("Ancien mot de passe incorrect");
+
+  const newPasswordHash = await hashPassword(newPassword);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    }),
+    prisma.session.deleteMany({
+      where: { userId: userId },
+    }),
+  ]);
+
+  return { message: "Mot de passe mis à jour avec success" };
 }
 
 export async function getCurrentUser(
