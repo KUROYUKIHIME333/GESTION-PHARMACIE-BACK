@@ -25,7 +25,7 @@ export const loginSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
-  userId: z.string().cuid(),
+  userId: z.string().cuid().optional(),
   oldPassword: z.string().min(1, "Mot de passe actuel requis"),
   newPassword: z
     .string()
