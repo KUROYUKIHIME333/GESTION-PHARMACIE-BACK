@@ -106,6 +106,25 @@ export async function authRoutes(
     handler: authController.login.bind(authController),
   });
 
+  // POST /api/auth/logout
+  fastify.post("/logout", {
+    schema: {
+      description: "Déconnexion utilisateur",
+      tags: ["Auth"],
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            success: { type: "boolean" },
+            message: { type: "string" },
+          },
+        },
+      },
+    },
+    preHandler: [requireAuth], // On s'assure qu'il est connecté avant de déconnecter, ce serait débile sinon
+    handler: authController.logout.bind(authController),
+  });
+
   // GET /api/auth/me
   fastify.get("/me", {
     schema: {
