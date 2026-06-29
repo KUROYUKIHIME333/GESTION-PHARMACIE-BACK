@@ -125,6 +125,40 @@ export async function authRoutes(
     handler: authController.logout.bind(authController),
   });
 
+  // POST /api/auth/change-password
+  fastify.post("/change-password", {
+    schema: {
+      description: "Changement de mot de passe",
+      tag: ["Auth"],
+      body: {
+        type: "object",
+        required: ["oldPassword", "newPassword"],
+        properties: {
+          oldPassword: { type: "string", minLength: 8 },
+          newPassword: { type: "string", minLength: 8 },
+        },
+      },
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            success: { type: "boolean" },
+            message: { type: "string" },
+          },
+        },
+        401: {
+          type: "object",
+          properties: {
+            success: { type: "boolean", default: false },
+            message: { type: "string" },
+          },
+        },
+      },
+    },
+    preHandler: [requireAuth],
+    handler: authController.changePassword.bind(authController),
+  });
+
   // GET /api/auth/me
   fastify.get("/me", {
     schema: {
