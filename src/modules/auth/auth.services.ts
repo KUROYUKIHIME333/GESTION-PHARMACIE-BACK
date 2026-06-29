@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/prisma.js";
-import { hashPassword, verifyPassword, signJwt } from "@/lib/crypto.js";
+import {
+  hashPassword,
+  verifyPassword,
+  signJwt,
+  verifyJwt,
+} from "@/lib/crypto.js";
 import { AppError } from "../../lib/error.js"; // Votre classe unique
-import { RegisterInput, LoginInput } from "./auth.schemas.js";
+import { RegisterInput, LoginInput, DeviceDataInput } from "./auth.schemas.js";
 import { User } from "../../prisma/generated/prisma/client.js";
 
 export interface AuthResponse {
@@ -62,7 +67,10 @@ export async function registerUser(
   return { user: sanitizeUser(user), token };
 }
 
-export async function loginUser(input: LoginInput): Promise<AuthResponse> {
+export async function loginUser(
+  input: LoginInput,
+  devicesDatas: DeviceDataInput
+): Promise<AuthResponse> {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     include: { service: true },
@@ -111,17 +119,58 @@ export async function loginUser(input: LoginInput): Promise<AuthResponse> {
       failedLoginCount: 0,
       lockedUntil: null,
       lastLoginAt: new Date(),
+      lastLoginIp: devicesDatas.ipAddress,
     },
     include: { service: true },
   });
 
+  // 1. Génération du token
   const token = signJwt({
-    userId: updatedUser.id,
-    role: updatedUser.role,
-    email: updatedUser.email,
+    userId: user.id,
+    role: user.role,
+    email: user.email,
+  });
+  const hashToken = await hashPassword(token); // Stocker le hash pour sécurité
+  const { iat, exp } = verifyJwt(token);
+
+  // 2. Gestion de la session (upsert au lieu de if/else)
+  await prisma.session.upsert({
+    create: {
+      userId: user.id,
+      tokenHash: hashToken,
+      userAgent: devicesDatas.userAgent,
+      ipAddress: devicesDatas.ipAddress,
+      expiresAt: new Date(exp! * 1000),
+      createdAt: new Date(iat! * 1000),
+      updatedAt: new Date(iat! * 1000),
+    },
+    update: {
+      tokenHash: hashToken,
+      expiresAt: new Date(exp! * 1000),
+      userAgent: devicesDatas.userAgent,
+      updatedAt: new Date(iat! * 1000),
+    },
+    where: {
+      userId_ipAddress: {
+        userId: user.id,
+        ipAddress: devicesDatas.ipAddress ?? "",
+      },
+    },
   });
 
   return { user: sanitizeUser(updatedUser), token };
+}
+
+export async function logoutUser(
+  userId: string,
+  ipAddress: string
+): Promise<void> {
+  await prisma.session.deleteMany({
+    where: {
+      userId,
+      ipAddress,
+    },
+  });
 }
 
 export async function getCurrentUser(
