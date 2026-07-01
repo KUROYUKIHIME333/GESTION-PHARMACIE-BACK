@@ -68,6 +68,11 @@ app.get("/health", async () => {
   return { status: "ok", timestamp: new Date().toISOString() };
 });
 
+// ─── Server root ────────────────────────────────────────────────────────────
+app.get("/", async (_request: FastifyRequest, reply: FastifyReply) => {
+  return reply.redirect("/docs");
+});
+
 // ─── Gestion des erreurs (Type-Safe) ─────────────────────────────────────────
 app.setErrorHandler(
   (error: unknown, _request: FastifyRequest, reply: FastifyReply) => {

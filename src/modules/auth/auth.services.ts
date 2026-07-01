@@ -6,7 +6,12 @@ import {
   verifyJwt,
 } from "@/lib/crypto.js";
 import { AppError } from "../../lib/error.js"; // Votre classe unique
-import { RegisterInput, LoginInput, DeviceDataInput } from "./auth.schemas.js";
+import {
+  RegisterInput,
+  LoginInput,
+  DeviceDataInput,
+  ChangePasswordInput,
+} from "./auth.schemas.js";
 import { User } from "../../prisma/generated/prisma/client.js";
 
 export interface AuthResponse {
@@ -131,32 +136,36 @@ export async function loginUser(
     email: user.email,
   });
   const hashToken = await hashPassword(token); // Stocker le hash pour sécurité
-  const { iat, exp } = verifyJwt(token);
+  const exp = verifyJwt(token).exp;
 
-  // 2. Gestion de la session (upsert au lieu de if/else)
-  await prisma.session.upsert({
-    create: {
-      userId: user.id,
-      tokenHash: hashToken,
-      userAgent: devicesDatas.userAgent,
-      ipAddress: devicesDatas.ipAddress,
-      expiresAt: new Date(exp! * 1000),
-      createdAt: new Date(iat! * 1000),
-      updatedAt: new Date(iat! * 1000),
-    },
-    update: {
-      tokenHash: hashToken,
-      expiresAt: new Date(exp! * 1000),
-      userAgent: devicesDatas.userAgent,
-      updatedAt: new Date(iat! * 1000),
-    },
-    where: {
-      userId_ipAddress: {
-        userId: user.id,
-        ipAddress: devicesDatas.ipAddress ?? "",
-      },
-    },
+  // 2. Gestion de la sessio
+  const existingSession = await prisma.session.findUnique({
+    where: { userId: user.id, ipAddress: devicesDatas.ipAddress || "" },
   });
+
+  if (!existingSession) {
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken,
+        userAgent: devicesDatas.userAgent,
+        ipAddress: devicesDatas.ipAddress,
+        expiresAt: new Date(exp! * 1000),
+      },
+    });
+  } else {
+    await prisma.session.update({
+      where: {
+        userId: user.id,
+        ipAddress: devicesDatas.ipAddress || "",
+      },
+      data: {
+        tokenHash: hashToken,
+        expiresAt: new Date(exp! * 1000),
+        userAgent: devicesDatas.userAgent,
+      },
+    });
+  }
 
   return { user: sanitizeUser(updatedUser), token };
 }
@@ -171,6 +180,42 @@ export async function logoutUser(
       ipAddress,
     },
   });
+}
+
+export async function changeMyPasssword({
+  userId,
+  oldPassword,
+  newPassword,
+}: ChangePasswordInput) {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+  });
+
+  if (!user) throw AppError.notFound("Utilisateur", userId);
+
+  const oldPasswordMatch = await verifyPassword(oldPassword, user.passwordHash);
+
+  if (!oldPasswordMatch)
+    throw AppError.unauthorized("Ancien mot de passe incorrect");
+
+  const newPasswordHash = await hashPassword(newPassword);
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+      },
+    }),
+    prisma.session.deleteMany({
+      where: { userId: userId },
+    }),
+  ]);
+
+  return { message: "Mot de passe mis à jour avec success" };
 }
 
 export async function getCurrentUser(
