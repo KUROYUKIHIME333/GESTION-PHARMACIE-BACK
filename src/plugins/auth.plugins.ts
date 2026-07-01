@@ -1,6 +1,6 @@
 import { FastifyPluginAsync, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { verifyJwt, hashPassword, verifyPassword } from "@/lib/crypto.js";
+import { verifyJwt, verifyPassword } from "@/lib/crypto.js";
 import { AppError } from "../lib/error.js";
 import { prisma } from "@/lib/prisma.js";
 import { User } from "../prisma/generated/prisma/client.js";
