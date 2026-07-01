@@ -56,7 +56,14 @@ export async function prescriptionRoutes(
 ): Promise<void> {
   // GET /api/prescriptions - Liste des ordonnances
   fastify.get("/", {
-    preHandler: [requireAuth],
+    preHandler: [
+      requireAuth,
+      fastify.requireRole(
+        UserRole.SUPERADMIN,
+        UserRole.PHARMACIST,
+        UserRole.DOCTOR
+      ),
+    ],
     schema: {
       tags: ["Prescriptions"],
       response: {
@@ -109,7 +116,14 @@ export async function prescriptionRoutes(
 
   // GET /api/prescriptions/:id - Détail d'une ordonnance
   fastify.get("/:id", {
-    preHandler: [requireAuth],
+    preHandler: [
+      requireAuth,
+      fastify.requireRole(
+        UserRole.SUPERADMIN,
+        UserRole.PHARMACIST,
+        UserRole.DOCTOR
+      ),
+    ],
     schema: {
       tags: ["Prescriptions"],
       params: { type: "object", properties: { id: { type: "string" } } },
