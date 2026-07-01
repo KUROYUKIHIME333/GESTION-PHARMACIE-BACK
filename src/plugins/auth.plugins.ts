@@ -1,6 +1,6 @@
 import { FastifyPluginAsync, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
-import { verifyJwt, hashPassword } from "@/lib/crypto.js";
+import { verifyJwt, hashPassword, verifyPassword } from "@/lib/crypto.js";
 import { AppError } from "../lib/error.js";
 import { prisma } from "@/lib/prisma.js";
 import { User } from "../prisma/generated/prisma/client.js";
@@ -30,16 +30,15 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
       const session = await prisma.session.findUnique({
         where: {
-          userId_ipAddress: {
             userId: decoded.userId,
             ipAddress: request.ip,
-          },
+
         },
       });
 
       if (!session) return;
 
-      const isTokenValid = (await hashPassword(token)) === session.tokenHash;
+      const isTokenValid = await verifyPassword(token, session.tokenHash);
 
       if (!isTokenValid) return;
 
@@ -59,6 +58,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
       // On ignore les erreurs de token ici pour que request.user reste undefined
       // C'est le rôle de requireAuth de throw error si l'accès est refusé.
     }
+
   });
 };
 
