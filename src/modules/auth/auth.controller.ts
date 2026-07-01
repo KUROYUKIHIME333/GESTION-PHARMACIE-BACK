@@ -83,6 +83,7 @@ export class AuthController {
   logout = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const user = getUserConnected(request);
+      console.log(user)
 
       if (user) {
         // Suppression en base
