@@ -129,7 +129,7 @@ export async function authRoutes(
   fastify.post("/change-password", {
     schema: {
       description: "Changement de mot de passe",
-      tag: ["Auth"],
+      tags: ["Auth"],
       body: {
         type: "object",
         required: ["oldPassword", "newPassword"],
