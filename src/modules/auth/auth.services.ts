@@ -136,32 +136,36 @@ export async function loginUser(
     email: user.email,
   });
   const hashToken = await hashPassword(token); // Stocker le hash pour sécurité
-  const { iat, exp } = verifyJwt(token);
+  const exp = verifyJwt(token).exp;
 
-  // 2. Gestion de la session (upsert au lieu de if/else)
-  await prisma.session.upsert({
-    create: {
-      userId: user.id,
-      tokenHash: hashToken,
-      userAgent: devicesDatas.userAgent,
-      ipAddress: devicesDatas.ipAddress,
-      expiresAt: new Date(exp! * 1000),
-      createdAt: new Date(iat! * 1000),
-      updatedAt: new Date(iat! * 1000),
-    },
-    update: {
-      tokenHash: hashToken,
-      expiresAt: new Date(exp! * 1000),
-      userAgent: devicesDatas.userAgent,
-      updatedAt: new Date(iat! * 1000),
-    },
-    where: {
-      userId_ipAddress: {
-        userId: user.id,
-        ipAddress: devicesDatas.ipAddress ?? "",
-      },
-    },
+  // 2. Gestion de la sessio
+  const existingSession = await prisma.session.findUnique({
+    where: { userId: user.id, ipAddress: devicesDatas.ipAddress || "" },
   });
+
+  if (!existingSession) {
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken,
+        userAgent: devicesDatas.userAgent,
+        ipAddress: devicesDatas.ipAddress,
+        expiresAt: new Date(exp! * 1000),
+      },
+    });
+  } else {
+    await prisma.session.update({
+      where: {
+        userId: user.id,
+        ipAddress: devicesDatas.ipAddress || "",
+      },
+      data: {
+        tokenHash: hashToken,
+        expiresAt: new Date(exp! * 1000),
+        userAgent: devicesDatas.userAgent,
+      },
+    });
+  }
 
   return { user: sanitizeUser(updatedUser), token };
 }
